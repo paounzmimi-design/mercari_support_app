@@ -12,10 +12,10 @@
     <h1>メルカリ初心者向け出品サポートAI</h1>
     <p class="muted">{{ disclaimer }}</p>
     <nav>
-      {% if admin_valid %}
+      {% if show_admin_menu %}
         <a href="{{ url_for('admin_top') }}">管理画面</a>
         <a href="{{ url_for('admin_logout') }}">管理者ログアウト</a>
-      {% elif login_valid %}
+      {% elif show_user_menu %}
         <a href="{{ url_for('index') }}">トップ</a>
         <a href="{{ url_for('diagnose') }}">商品診断</a>
         <a href="{{ url_for('history') }}">履歴一覧</a>
