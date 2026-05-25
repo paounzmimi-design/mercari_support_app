@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}管理画面{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>管理画面トップ</h2>
+  <div class="stats-grid">
+    <div class="mini-card">登録ユーザー数: {{ total_users }}</div>
+    <div class="mini-card">有効ユーザー数: {{ active_count }}</div>
+    <div class="mini-card">停止中ユーザー数: {{ stopped_count }}</div>
+    <div class="mini-card">期限切れユーザー数: {{ expired_count }}</div>
+    <div class="mini-card">全診断履歴数: {{ total_history }}</div>
+  </div>
+  <p><a class="button" href="{{ url_for('admin_user_new') }}">ユーザー追加</a> <a class="button" href="{{ url_for('admin_logout') }}">管理者ログアウト</a></p>
+</section>
+<section class="card">
+  <h3>ユーザー一覧</h3>
+  {% for user in users %}
+  <div class="history-item">
+    <p><strong>{{ user.display_name }}</strong>（{{ user.username }}）</p>
+    <p>有効: {{ 'はい' if user.is_active else '停止中' }} / 期限: {{ user.expires_at }}</p>
+    <a class="button" href="{{ url_for('admin_user_edit', user_id=user.id) }}">編集</a>
+    <form method="post" action="{{ url_for('admin_user_delete', user_id=user.id) }}" onsubmit="return confirm('このユーザーを削除しますか？')" style="display:inline">
+      <button class="button danger" type="submit">削除</button>
+    </form>
+  </div>
+  {% else %}<p>ユーザーがいません。</p>{% endfor %}
+</section>
+{% endblock %}

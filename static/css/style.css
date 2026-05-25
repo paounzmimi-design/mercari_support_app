@@ -28,3 +28,7 @@ pre { white-space:pre-wrap; background:#fdfaf8; padding:10px; border-radius:12px
 .caution { color:#8b5a23; font-weight:700; }
 .strong { font-weight:700; }
 @media (max-width:600px){ .header h1{font-size:1.1rem;} .container{padding:0 10px;} }
+.stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.form select { width:100%; padding:12px; border-radius:12px; border:1px solid #e6d7d2; background:#fffefc; }
+button:disabled { opacity:.6; cursor:not-allowed; }
+@media (max-width:600px){ .stats-grid{grid-template-columns:1fr;} }
