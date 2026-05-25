@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card">
+  <h2>履歴一覧</h2>
+  {% if records %}
+    {% for r in records %}
+      <article class="history-item">
+        <h3>{{ r.item_name }}（{{ r.created_at[:10] }}）</h3>
+        <p>利益見込み: {{ r.profit }}円 / 価格: {{ r.expected_price }}円</p>
+      </article>
+    {% endfor %}
+  {% else %}
+    <p>履歴がありません。</p>
+  {% endif %}
+</section>
+{% endblock %}
