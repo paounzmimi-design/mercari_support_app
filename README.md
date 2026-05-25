@@ -1,0 +1,2 @@
+# mercari_support_app
+メルカリ初心者向け出品サポートAIアプリ
