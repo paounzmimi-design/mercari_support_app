@@ -1,8 +1,28 @@
 {% extends 'base.html' %}
 {% block content %}
+<section class="card hero">
+  <h2>商品名を入れるだけで、出品準備が整う。</h2>
+  <p>初心者さん向けに、タイトル・説明文・価格の考え方までやさしくサポート。迷わずそのままメルカリ出品へ進めます。</p>
+  <a class="button large" href="{{ url_for('diagnose') }}">商品診断をはじめる</a>
+</section>
+
 <section class="card">
-  <h2>トップページ</h2>
-  <p>商品名と状態を入力するだけで、タイトル・説明文・利益計算・写真チェックまで一括サポート。</p>
-  <a class="button" href="{{ url_for('diagnose') }}">商品診断をはじめる</a>
+  <h3>できること</h3>
+  <div class="feature-grid one-col">
+    <div class="mini-card">タイトル作成</div>
+    <div class="mini-card">説明文作成</div>
+    <div class="mini-card">価格と利益の確認</div>
+    <div class="mini-card">写真チェック</div>
+    <div class="mini-card">次に売る物のおすすめ</div>
+  </div>
+</section>
+
+<section class="card">
+  <h3>使い方 3ステップ</h3>
+  <ol>
+    <li>商品名と状態を入力</li>
+    <li>AIが出品文と価格の考え方を提案</li>
+    <li>コピーしてメルカリに貼る</li>
+  </ol>
 </section>
 {% endblock %}
