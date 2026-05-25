@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Mercari Support{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <script defer src="{{ url_for('static', filename='js/app.js') }}"></script>
+</head>
+<body>
+  <header class="header card">
+    <h1>メルカリ初心者向け出品サポートAI</h1>
+    <p class="muted">{{ disclaimer }}</p>
+    <nav>
+      {% if login_valid %}
+        <a href="{{ url_for('index') }}">トップ</a>
+        <a href="{{ url_for('diagnose') }}">商品診断</a>
+        <a href="{{ url_for('history') }}">履歴一覧</a>
+        <a href="{{ url_for('logout') }}">ログアウト</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main class="container">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}<div class="card">{% for m in messages %}<p>{{ m }}</p>{% endfor %}</div>{% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,12 @@
+:root { --bg:#fffdf8; --card:#fff; --accent:#d7a4b1; --sub:#7f6f73; }
+* { box-sizing:border-box; }
+body { margin:0; font-family:"Hiragino Kaku Gothic ProN", sans-serif; background:linear-gradient(#fffdf8,#f6eee9); color:#4a3f42; }
+.container { max-width:760px; margin:20px auto; padding:0 14px; }
+.card { background:var(--card); border-radius:18px; padding:16px; margin-bottom:14px; box-shadow:0 6px 20px rgba(145,120,126,.12); }
+.header h1 { margin:0 0 8px; font-size:1.35rem; }
+nav a,.button,button { background:#e8c4ce; color:#4a3f42; border:none; border-radius:14px; padding:10px 14px; text-decoration:none; margin:3px; display:inline-block; }
+.form label { display:block; margin:10px 0; }
+.form input,.form textarea { width:100%; padding:10px; border-radius:12px; border:1px solid #e6d7d2; }
+.muted { color:var(--sub); font-size:.9rem; }
+.history-item { border-top:1px solid #f0e7e2; padding-top:10px; margin-top:10px; }
+@media (max-width:600px){ .header h1{font-size:1.1rem;} }

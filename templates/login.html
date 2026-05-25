@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}ログイン{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>ログイン</h2>
+  <p>利用期限はログインから24時間です。</p>
+  <form method="post" class="form">
+    <label>ユーザー名<input name="username" required></label>
+    <button type="submit">ログイン</button>
+  </form>
+</section>
+{% endblock %}

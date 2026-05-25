@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card">
+  <h2>トップページ</h2>
+  <p>商品名と状態を入力するだけで、タイトル・説明文・利益計算・写真チェックまで一括サポート。</p>
+  <a class="button" href="{{ url_for('diagnose') }}">商品診断をはじめる</a>
+</section>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card"><h2>診断結果</h2><p>商品: {{ result.item_name }}</p></section>
+<section class="card"><h3>タイトル作成（3案）</h3>{% for t in result.titles %}<p>{{ t }} <button class="copy-btn" data-copy="{{ t }}">コピー</button></p>{% endfor %}</section>
+<section class="card"><h3>説明文作成（3案）</h3>{% for d in result.descriptions %}<p>{{ d }} <button class="copy-btn" data-copy="{{ d }}">コピー</button></p>{% endfor %}</section>
+<section class="card"><h3>利益計算</h3><p>販売手数料(10%): {{ result.fee }}円</p><p>利益見込み: <strong>{{ result.profit }}円</strong></p></section>
+<section class="card"><h3>価格の考え方</h3><p>{{ result.pricing_advice }}</p></section>
+<section class="card"><h3>写真チェック</h3><ul id="photo-checklist"></ul></section>
+<section class="card"><h3>次に売る物おすすめ</h3><ul>{% for n in result.next_items %}<li>{{ n }}</li>{% endfor %}</ul></section>
+{% endblock %}
