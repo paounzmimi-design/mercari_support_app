@@ -149,6 +149,8 @@ def check_diagnose_availability(user):
 
 
 def is_login_valid():
+    if session.get("role") != "user":
+        return False
     username = session.get("username")
     if not username:
         return False
@@ -162,19 +164,7 @@ def is_login_valid():
 
 
 def is_admin_valid():
-    return bool(session.get("admin_valid") is True)
-
-
-def clear_user_session():
-    session.pop("user", None)
-    session.pop("user_id", None)
-    session.pop("username", None)
-    session.pop("latest_result", None)
-
-
-def clear_admin_session():
-    session.pop("admin_valid", None)
-    session.pop("admin_username", None)
+    return session.get("role") == "admin" and session.get("admin_valid") is True
 
 
 def find_user_by_username(username):
@@ -265,6 +255,7 @@ def inject_global():
     return {
         "disclaimer": DISCLAIMER,
         "current_user": current_user(),
+        "role": session.get("role"),
         "login_valid": login_ok,
         "admin_valid": admin_ok,
         "show_user_menu": login_ok and not hide_user_menu,
@@ -294,8 +285,8 @@ def login():
         if datetime.utcnow() >= datetime.fromisoformat(user["expires_at"]):
             flash("利用期限が切れています")
             return render_template("login.html")
-        clear_admin_session()
-        session["user"] = user["username"]
+        session.clear()
+        session["role"] = "user"
         session["user_id"] = user.get("id")
         session["username"] = user["username"]
         flash("ログインしました")
@@ -309,7 +300,8 @@ def admin_login():
     missing = not admin_username or not admin_password
     if request.method == "POST" and not missing:
         if request.form.get("username") == admin_username and request.form.get("password") == admin_password:
-            clear_user_session()
+            session.clear()
+            session["role"] = "admin"
             session["admin_valid"] = True
             session["admin_username"] = admin_username
             return redirect(url_for("admin_top"))
@@ -391,8 +383,7 @@ def admin_user_delete(user_id):
 
 @app.route('/logout')
 def logout():
-    clear_user_session()
-    clear_admin_session()
+    session.clear()
     flash('ログアウトしました。')
     return redirect(url_for('login'))
 
