@@ -11,7 +11,12 @@
           <p><strong>カテゴリ:</strong> {{ r.category }}</p>
           <p><strong>状態:</strong> {{ r.condition }}</p>
           <p><strong>価格:</strong> {{ r.expected_price }}円</p>
+          {% if r.has_purchase_price %}
           <p><strong>利益見込み:</strong> {{ r.profit }}円</p>
+          {% else %}
+          <p><strong>購入価格:</strong> 未入力</p>
+          <p><strong>手元に残る金額:</strong> {{ r.net_amount if r.net_amount is defined else (r.expected_price - r.fee - r.shipping_cost) }}円</p>
+          {% endif %}
           <div class="history-actions">
             <a class="button" href="{{ url_for('history_detail', record_id=r.id) }}">詳細を見る</a>
             <form method="post" action="{{ url_for('delete_history', record_id=r.id) }}" onsubmit="return confirm('この履歴を削除しますか？');">

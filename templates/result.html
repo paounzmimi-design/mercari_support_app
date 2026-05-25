@@ -21,11 +21,16 @@
   <h3>利益計算</h3>
   <div class="profit-grid">
     <p>販売価格: {{ result.expected_price }}円</p><p>販売手数料10%: {{ result.fee }}円</p>
-    <p>送料: {{ result.shipping_cost }}円</p><p>購入価格: {{ result.purchase_price }}円</p>
-    <p class="strong">利益見込み: {{ result.profit }}円</p>
+    <p>送料: {{ result.shipping_cost }}円</p><p>購入価格: {% if result.has_purchase_price %}{{ result.purchase_price }}円{% else %}未入力{% endif %}</p>
+    {% if result.has_purchase_price %}<p class="strong">利益見込み: {{ result.profit }}円</p>{% else %}<p class="strong">手元に残る金額: {{ result.net_amount }}円</p>{% endif %}
   </div>
-  {% if result.profit < 0 %}<p class="warn">⚠ 赤字です。価格見直しが必要です。</p>
-  {% elif result.profit < 500 %}<p class="caution">利益が少ないため、送料・価格を再確認しましょう。</p>{% endif %}
+  {% if result.has_purchase_price %}
+    {% if result.profit < 0 %}<p class="warn">⚠ 赤字です。価格見直しが必要です。</p>
+    {% elif result.profit < 500 %}<p class="caution">利益が少ないため、送料・価格を再確認しましょう。</p>{% endif %}
+  {% else %}
+    <p>販売後に手元に残る金額の目安です。</p>
+    <p>送料が高い場合は、価格や発送方法を見直しましょう。</p>
+  {% endif %}
 </section>
 
 <section class="card"><h3>写真で必ず見せる場所（{{ result.category }}）</h3><ul id="photo-checklist" data-category="{{ result.category }}"></ul></section>

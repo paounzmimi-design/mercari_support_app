@@ -212,10 +212,14 @@ def build_descriptions(item_name, condition, category, notes):
     safe = f"ご覧いただきありがとうございます。{item_name}（{category}）です。\n状態は{condition}で、{notes_text}\n気になる箇所はできるだけ写真でわかるようにしています。\n中古品にご理解のある方のみお願いいたします。ご不明点はお気軽にコメントください。"
     return [shared, short, safe]
 
-def analyze_result(item_name, condition, category, notes, expected_price, shipping_cost, purchase_price, fee, profit):
+def analyze_result(item_name, condition, category, notes, expected_price, shipping_cost, purchase_price, fee, profit, has_purchase_price):
     easy = "出品しやすい" if category in ["服", "本", "美容品", "バッグ"] else "やや準備が必要"
     beginner = "★★★★★" if easy == "出品しやすい" else "★★★☆☆"
-    return {"listing_ease": easy, "beginner_score": beginner, "one_line": "初心者でも進めやすい条件です。このまま出品準備を進められます。" if profit >= 500 else "出品は可能ですが利益が薄めです。価格か送料を少し調整しましょう。", "price_thinking": "同じ商品の最近の売却価格を3件ほど確認し、手数料10%と送料を引いて利益が残る価格を基準にします。", "quick_sell_price": max(expected_price - 500, 300), "high_trial_price": expected_price + 700, "discount_caution": max(expected_price - 1200, 300), "shipping_note": "送料が高めなので、配送方法の見直しで利益改善が期待できます。" if shipping_cost > 800 else "送料は許容範囲です。梱包サイズを抑えるとさらに安心です。", "photo_must": CATEGORY_PHOTO_POINTS.get(category, CATEGORY_PHOTO_POINTS["その他"]), "improve_if_slow": ["タイトル冒頭に商品名と型番を入れる", "1枚目を明るい全体写真に差し替える", "説明文に傷の場所を具体的に追記する"], "next_actions": ["タイトル案から1つ選んでコピー", "説明文案に実物情報を追記", "価格を最終調整して出品"]}
+    if has_purchase_price:
+        one_line = "初心者でも進めやすい条件です。このまま出品準備を進められます。" if profit >= 500 else "出品は可能ですが利益が薄めです。価格か送料を少し調整しましょう。"
+    else:
+        one_line = "販売後に手元に残る金額の目安です。送料が高い場合は、価格や発送方法を見直しましょう。"
+    return {"listing_ease": easy, "beginner_score": beginner, "one_line": one_line, "price_thinking": "同じ商品の最近の売却価格を3件ほど確認し、手数料10%と送料を引いて利益が残る価格を基準にします。", "quick_sell_price": max(expected_price - 500, 300), "high_trial_price": expected_price + 700, "discount_caution": max(expected_price - 1200, 300), "shipping_note": "送料が高めなので、配送方法の見直しで利益改善が期待できます。" if shipping_cost > 800 else "送料は許容範囲です。梱包サイズを抑えるとさらに安心です。", "photo_must": CATEGORY_PHOTO_POINTS.get(category, CATEGORY_PHOTO_POINTS["その他"]), "improve_if_slow": ["タイトル冒頭に商品名と型番を入れる", "1枚目を明るい全体写真に差し替える", "説明文に傷の場所を具体的に追記する"], "next_actions": ["タイトル案から1つ選んでコピー", "説明文案に実物情報を追記", "価格を最終調整して出品"]}
 
 def build_next_recommendations(category):
     mapping = {
@@ -406,8 +410,8 @@ def diagnose():
             save_json(USERS_FILE, users_data)
             flash(message)
             return render_template('diagnose.html')
-        item_name=request.form.get('item_name','').strip(); condition=request.form.get('condition','').strip(); category=request.form.get('category','').strip() or 'その他'; notes=request.form.get('notes','').strip(); purchase_price=int(request.form.get('purchase_price') or 0); expected_price=int(request.form.get('expected_price') or 0); shipping_cost=int(request.form.get('shipping_cost') or 0); fee=int(expected_price*0.1); profit=expected_price-purchase_price-shipping_cost-fee
-        result={"id":str(uuid.uuid4()),"user":current_user(),"created_at":datetime.utcnow().isoformat(),"item_name":item_name,"condition":condition,"category":category,"notes":notes,"titles":build_titles(item_name, condition, category),"descriptions":build_descriptions(item_name, condition, category, notes),"purchase_price":purchase_price,"expected_price":expected_price,"shipping_cost":shipping_cost,"fee":fee,"profit":profit,"analysis":analyze_result(item_name, condition, category, notes, expected_price, shipping_cost, purchase_price, fee, profit),"next_recommendations":build_next_recommendations(category)}
+        item_name=request.form.get('item_name','').strip(); condition=request.form.get('condition','').strip(); category=request.form.get('category','').strip() or 'その他'; notes=request.form.get('notes','').strip(); purchase_price_raw=request.form.get('purchase_price','').strip(); has_purchase_price=bool(purchase_price_raw); purchase_price=int(purchase_price_raw) if has_purchase_price else None; expected_price=int(request.form.get('expected_price') or 0); shipping_cost=int(request.form.get('shipping_cost') or 0); fee=int(expected_price*0.1); net_amount=expected_price-shipping_cost-fee; profit=net_amount-(purchase_price or 0)
+        result={"id":str(uuid.uuid4()),"user":current_user(),"created_at":datetime.utcnow().isoformat(),"item_name":item_name,"condition":condition,"category":category,"notes":notes,"titles":build_titles(item_name, condition, category),"descriptions":build_descriptions(item_name, condition, category, notes),"purchase_price":purchase_price,"has_purchase_price":has_purchase_price,"expected_price":expected_price,"shipping_cost":shipping_cost,"fee":fee,"profit":profit,"net_amount":net_amount,"analysis":analyze_result(item_name, condition, category, notes, expected_price, shipping_cost, purchase_price, fee, profit, has_purchase_price),"next_recommendations":build_next_recommendations(category)}
         save_history(result)
         user['usage_total'] = int(user.get('usage_total', 0) or 0) + 1
         user['daily_usage_count'] = int(user.get('daily_usage_count', 0) or 0) + 1
