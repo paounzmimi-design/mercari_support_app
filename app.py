@@ -162,7 +162,19 @@ def is_login_valid():
 
 
 def is_admin_valid():
-    return bool(session.get("is_admin"))
+    return bool(session.get("admin_valid") is True)
+
+
+def clear_user_session():
+    session.pop("user", None)
+    session.pop("user_id", None)
+    session.pop("username", None)
+    session.pop("latest_result", None)
+
+
+def clear_admin_session():
+    session.pop("admin_valid", None)
+    session.pop("admin_username", None)
 
 
 def find_user_by_username(username):
@@ -282,6 +294,9 @@ def login():
         if datetime.utcnow() >= datetime.fromisoformat(user["expires_at"]):
             flash("利用期限が切れています")
             return render_template("login.html")
+        clear_admin_session()
+        session["user"] = user["username"]
+        session["user_id"] = user.get("id")
         session["username"] = user["username"]
         flash("ログインしました")
         return redirect(url_for("index"))
@@ -294,14 +309,16 @@ def admin_login():
     missing = not admin_username or not admin_password
     if request.method == "POST" and not missing:
         if request.form.get("username") == admin_username and request.form.get("password") == admin_password:
-            session["is_admin"] = True
+            clear_user_session()
+            session["admin_valid"] = True
+            session["admin_username"] = admin_username
             return redirect(url_for("admin_top"))
         flash("管理者ユーザー名またはパスワードが違います")
     return render_template("admin_login.html", admin_missing=missing)
 
 @app.route("/admin/logout")
 def admin_logout():
-    session.pop("is_admin", None)
+    session.clear()
     flash("管理者ログアウトしました")
     return redirect(url_for("admin_login"))
 
@@ -374,7 +391,8 @@ def admin_user_delete(user_id):
 
 @app.route('/logout')
 def logout():
-    session.pop('username', None)
+    clear_user_session()
+    clear_admin_session()
     flash('ログアウトしました。')
     return redirect(url_for('login'))
 
