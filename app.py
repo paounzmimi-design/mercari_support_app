@@ -72,16 +72,26 @@ def normalize_users_data(raw):
                 }
             )
         elif isinstance(u, dict):
+            created_at = u.get("created_at") or datetime.utcnow().isoformat()
+            expires_at = u.get("expires_at") or (datetime.utcnow() + timedelta(days=3650)).isoformat()
+            daily_usage_date = u.get("daily_usage_date") or datetime.utcnow().date().isoformat()
             users.append(
                 {
                     "id": u.get("id") or str(uuid.uuid4()),
                     "username": (u.get("username") or "").strip(),
                     "password_hash": u.get("password_hash", ""),
                     "display_name": u.get("display_name") or u.get("username") or "",
-                    "expires_at": u.get("expires_at") or (datetime.utcnow() + timedelta(days=3650)).isoformat(),
+                    "expires_at": expires_at,
                     "is_active": bool(u.get("is_active", True)),
-                    "created_at": u.get("created_at") or datetime.utcnow().isoformat(),
+                    "created_at": created_at,
                     "memo": u.get("memo", ""),
+                    "monthly_limit": int(u.get("monthly_limit", 100) or 100),
+                    "daily_limit": int(u.get("daily_limit", 10) or 10),
+                    "usage_total": int(u.get("usage_total", 0) or 0),
+                    "usage_period_start": u.get("usage_period_start") or created_at,
+                    "usage_period_end": u.get("usage_period_end") or expires_at,
+                    "daily_usage_date": daily_usage_date,
+                    "daily_usage_count": int(u.get("daily_usage_count", 0) or 0),
                 }
             )
     return {"users": [u for u in users if u.get("username")]}
@@ -103,6 +113,41 @@ def current_user():
     return session.get("username")
 
 
+def reset_daily_usage_if_needed(user):
+    today = datetime.utcnow().date().isoformat()
+    if user.get("daily_usage_date") != today:
+        user["daily_usage_date"] = today
+        user["daily_usage_count"] = 0
+
+
+def usage_status(user):
+    daily_limit = max(int(user.get("daily_limit", 10) or 10), 1)
+    monthly_limit = max(int(user.get("monthly_limit", 100) or 100), 1)
+    daily_used = int(user.get("daily_usage_count", 0) or 0)
+    monthly_used = int(user.get("usage_total", 0) or 0)
+    return {
+        "daily_used": daily_used,
+        "daily_limit": daily_limit,
+        "daily_remaining": max(daily_limit - daily_used, 0),
+        "monthly_used": monthly_used,
+        "monthly_limit": monthly_limit,
+        "monthly_remaining": max(monthly_limit - monthly_used, 0),
+    }
+
+
+def check_diagnose_availability(user):
+    if not user.get("is_active", False):
+        return "このアカウントは停止中です。管理者へご連絡ください。"
+    if datetime.utcnow() >= datetime.fromisoformat(user.get("expires_at", "")):
+        return "利用期限が切れています。管理者へご連絡ください。"
+    status = usage_status(user)
+    if status["daily_used"] >= status["daily_limit"]:
+        return "本日の診断回数上限に達しました。明日またご利用ください。"
+    if status["monthly_used"] >= status["monthly_limit"]:
+        return "30日間の診断回数上限に達しました。延長をご希望の場合は管理者へご連絡ください。"
+    return None
+
+
 def is_login_valid():
     username = session.get("username")
     if not username:
@@ -121,7 +166,11 @@ def is_admin_valid():
 
 
 def find_user_by_username(username):
-    users = load_users()["users"]
+    users_data = load_users()
+    users = users_data["users"]
+    for u in users:
+        reset_daily_usage_if_needed(u)
+    save_json(USERS_FILE, users_data)
     return next((u for u in users if u.get("username") == username), None)
 
 
@@ -199,6 +248,8 @@ def inject_global():
     endpoint = request.endpoint or ""
     hide_user_menu = endpoint in {"login", "admin_login"}
     hide_admin_menu = endpoint == "login"
+    user = find_user_by_username(current_user()) if login_ok else None
+    usage = usage_status(user) if user else None
     return {
         "disclaimer": DISCLAIMER,
         "current_user": current_user(),
@@ -206,6 +257,7 @@ def inject_global():
         "admin_valid": admin_ok,
         "show_user_menu": login_ok and not hide_user_menu,
         "show_admin_menu": admin_ok and not hide_admin_menu,
+        "usage": usage,
     }
 
 @app.route("/")
@@ -257,7 +309,11 @@ def admin_logout():
 def admin_top():
     if not is_admin_valid():
         return redirect(url_for("admin_login"))
-    users = load_users()["users"]
+    users_data = load_users()
+    users = users_data["users"]
+    for u in users:
+        reset_daily_usage_if_needed(u)
+    save_json(USERS_FILE, users_data)
     now = datetime.utcnow()
     active_count = sum(1 for u in users if u.get("is_active"))
     stopped_count = sum(1 for u in users if not u.get("is_active"))
@@ -279,7 +335,8 @@ def admin_user_new():
             flash('同じユーザー名は使えません')
             return render_template('admin_user_form.html', mode='new')
         expires_at = request.form.get('expires_at') or (datetime.utcnow()+timedelta(days=30)).isoformat(timespec='minutes')
-        data['users'].append({'id':str(uuid.uuid4()),'username':username,'password_hash':generate_password_hash(request.form.get('password')),'display_name':request.form.get('display_name','').strip() or username,'expires_at':expires_at,'is_active':True,'created_at':datetime.utcnow().isoformat(),'memo':request.form.get('memo','').strip()})
+        created_at = datetime.utcnow().isoformat()
+        data['users'].append({'id':str(uuid.uuid4()),'username':username,'password_hash':generate_password_hash(request.form.get('password')),'display_name':request.form.get('display_name','').strip() or username,'expires_at':expires_at,'is_active':True,'created_at':created_at,'memo':request.form.get('memo','').strip(),'monthly_limit':100,'daily_limit':10,'usage_total':0,'usage_period_start':created_at,'usage_period_end':expires_at,'daily_usage_date':datetime.utcnow().date().isoformat(),'daily_usage_count':0})
         save_json(USERS_FILE, data)
         return redirect(url_for('admin_top'))
     return render_template('admin_user_form.html', mode='new')
@@ -292,8 +349,17 @@ def admin_user_edit(user_id):
     if request.method=='POST':
         user['display_name']=request.form.get('display_name','').strip() or user['display_name']
         if request.form.get('password','').strip(): user['password_hash']=generate_password_hash(request.form.get('password').strip())
+        old_expires_at = user['expires_at']
         user['expires_at']=request.form.get('expires_at') or user['expires_at']
+        user['usage_period_end'] = user['expires_at']
         user['is_active']=request.form.get('is_active')=='true'
+        user['daily_limit']=max(int(request.form.get('daily_limit') or user.get('daily_limit', 10)), 1)
+        user['monthly_limit']=max(int(request.form.get('monthly_limit') or user.get('monthly_limit', 100)), 1)
+        if request.form.get('reset_usage') == 'on' or old_expires_at != user['expires_at']:
+            user['usage_total'] = 0
+            user['daily_usage_count'] = 0
+            user['daily_usage_date'] = datetime.utcnow().date().isoformat()
+            user['usage_period_start'] = datetime.utcnow().isoformat()
         user['memo']=request.form.get('memo','').strip()
         save_json(USERS_FILE, data)
         return redirect(url_for('admin_top'))
@@ -315,10 +381,30 @@ def logout():
 @app.route('/diagnose', methods=['GET', 'POST'])
 def diagnose():
     if not is_login_valid(): return redirect(url_for('login'))
+    users_data = load_users()
+    user = next((u for u in users_data['users'] if u.get('username') == current_user()), None)
+    if not user:
+        return redirect(url_for('login'))
+    reset_daily_usage_if_needed(user)
+    message = check_diagnose_availability(user)
+    if message:
+        save_json(USERS_FILE, users_data)
+        flash(message)
+        return render_template('diagnose.html')
     if request.method == 'POST':
+        message = check_diagnose_availability(user)
+        if message:
+            save_json(USERS_FILE, users_data)
+            flash(message)
+            return render_template('diagnose.html')
         item_name=request.form.get('item_name','').strip(); condition=request.form.get('condition','').strip(); category=request.form.get('category','').strip() or 'その他'; notes=request.form.get('notes','').strip(); purchase_price=int(request.form.get('purchase_price') or 0); expected_price=int(request.form.get('expected_price') or 0); shipping_cost=int(request.form.get('shipping_cost') or 0); fee=int(expected_price*0.1); profit=expected_price-purchase_price-shipping_cost-fee
         result={"id":str(uuid.uuid4()),"user":current_user(),"created_at":datetime.utcnow().isoformat(),"item_name":item_name,"condition":condition,"category":category,"notes":notes,"titles":build_titles(item_name, condition, category),"descriptions":build_descriptions(item_name, condition, category, notes),"purchase_price":purchase_price,"expected_price":expected_price,"shipping_cost":shipping_cost,"fee":fee,"profit":profit,"analysis":analyze_result(item_name, condition, category, notes, expected_price, shipping_cost, purchase_price, fee, profit),"next_recommendations":build_next_recommendations(category)}
-        save_history(result); session['latest_result']=result; return redirect(url_for('result'))
+        save_history(result)
+        user['usage_total'] = int(user.get('usage_total', 0) or 0) + 1
+        user['daily_usage_count'] = int(user.get('daily_usage_count', 0) or 0) + 1
+        save_json(USERS_FILE, users_data)
+        session['latest_result']=result; return redirect(url_for('result'))
+    save_json(USERS_FILE, users_data)
     return render_template('diagnose.html')
 
 @app.route('/result')

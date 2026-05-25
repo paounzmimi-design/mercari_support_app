@@ -18,6 +18,9 @@
   <div class="history-item">
     <p><strong>{{ user.display_name }}</strong>（{{ user.username }}）</p>
     <p>有効: {{ 'はい' if user.is_active else '停止中' }} / 期限: {{ user.expires_at }}</p>
+    <p>本日：{{ user.daily_usage_count }} / {{ user.daily_limit }}</p>
+    <p>期間内：{{ user.usage_total }} / {{ user.monthly_limit }}</p>
+    <p>残り：{{ [user.monthly_limit - user.usage_total, 0] | max }}</p>
     <a class="button" href="{{ url_for('admin_user_edit', user_id=user.id) }}">編集</a>
     <form method="post" action="{{ url_for('admin_user_delete', user_id=user.id) }}" onsubmit="return confirm('このユーザーを削除しますか？')" style="display:inline">
       <button class="button danger" type="submit">削除</button>

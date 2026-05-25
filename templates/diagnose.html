@@ -2,6 +2,9 @@
 {% block content %}
 <section class="card">
   <h2>商品診断</h2>
+  {% if usage %}
+  <p><strong>本日の残り診断回数：{{ usage.daily_remaining }}回</strong> / 期間内の残り診断回数：{{ usage.monthly_remaining }}回</p>
+  {% endif %}
   <form method="post" class="form">
     <label>商品名<input name="item_name" required></label>
     <label>状態<input name="condition" placeholder="新品未使用/目立った傷なし/使用感あり" required></label>

@@ -13,6 +13,9 @@
     <label>パスワード{% if mode == 'edit' %}（空欄なら変更なし）{% endif %}<input name="password" type="password" {% if mode == 'new' %}required{% endif %}></label>
     <label>利用期限（ISO形式）<input name="expires_at" value="{{ user.expires_at if user else '' }}" placeholder="2026-12-31T23:59:00"></label>
     {% if mode == 'edit' %}
+      <label>1日の上限回数<input name="daily_limit" type="number" min="1" value="{{ user.daily_limit }}" required></label>
+      <label>期間内上限回数<input name="monthly_limit" type="number" min="1" value="{{ user.monthly_limit }}" required></label>
+      <label><input type="checkbox" name="reset_usage"> 利用回数をリセットする</label>
       <label>状態
         <select name="is_active">
           <option value="true" {% if user.is_active %}selected{% endif %}>有効</option>
