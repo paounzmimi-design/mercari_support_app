@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card"><h2>履歴の詳細</h2><p>商品: {{ result.item_name }}（{{ result.category }}）</p></section>
+
+<section class="card history-meta">
+  <p><strong>カテゴリ:</strong> {{ result.category }}</p>
+  <p><strong>状態:</strong> {{ result.condition }}</p>
+  <p><strong>診断日:</strong> {{ result.created_at[:10] }}</p>
+</section>
+
+<section class="card">
+  <h3>出品しやすさ診断</h3>
+  <p>この商品は出品しやすいか: <strong>{{ result.analysis.listing_ease }}</strong></p>
+  <p>初心者おすすめ度: <strong>{{ result.analysis.beginner_score }}</strong></p>
+  <p>ひとこと結論: {{ result.analysis.one_line }}</p>
+  <p>おすすめ価格の考え方: {{ result.analysis.price_thinking }}</p>
+  <p>早く売りたい場合の価格目安: {{ result.analysis.quick_sell_price }}円</p>
+  <p>高めに試す場合の価格目安: {{ result.analysis.high_trial_price }}円</p>
+  <p>値下げ注意ライン: {{ result.analysis.discount_caution }}円</p>
+  <p>送料注意: {{ result.analysis.shipping_note }}</p>
+</section>
+
+<section class="card"><h3>タイトル作成（3パターン）</h3>{% for t in result.titles %}<p>{{ t }} <button class="copy-btn" data-copy="{{ t }}">コピー</button><span class="copy-feedback"></span></p>{% endfor %}</section>
+<section class="card"><h3>説明文作成（3パターン）</h3>{% for d in result.descriptions %}<div class="text-block"><pre>{{ d }}</pre><button class="copy-btn" data-copy="{{ d }}">コピー</button><span class="copy-feedback"></span></div>{% endfor %}</section>
+
+<section class="card">
+  <h3>利益計算</h3>
+  <div class="profit-grid">
+    <p>販売価格: {{ result.expected_price }}円</p><p>販売手数料10%: {{ result.fee }}円</p>
+    <p>送料: {{ result.shipping_cost }}円</p><p>購入価格: {{ result.purchase_price }}円</p>
+    <p class="strong">利益見込み: {{ result.profit }}円</p>
+  </div>
+</section>
+
+<section class="card"><h3>写真で必ず見せる場所（{{ result.category }}）</h3><ul>{% for point in result.analysis.photo_must %}<li>{{ point }}</li>{% endfor %}</ul></section>
+<section class="card"><h3>売れにくい場合の改善案</h3><ul>{% for tip in result.analysis.improve_if_slow %}<li>{{ tip }}</li>{% endfor %}</ul></section>
+<section class="card"><h3>次にやること</h3><ol>{% for step in result.analysis.next_actions %}<li>{{ step }}</li>{% endfor %}</ol></section>
+
+<section class="card"><h3>次に売る物おすすめ</h3>
+{% for n in result.next_recommendations %}
+<div class="history-item">
+  <p>おすすめ順位: {{ n.rank }}位 / 商品ジャンル: {{ n.genre }}</p>
+  <p>初心者向き度: {{ n.beginner_fit }} / 送料リスク: {{ n.shipping_risk }} / 写真の撮りやすさ: {{ n.photo_ease }}</p>
+  <p>おすすめ理由: {{ n.reason }}</p><p>注意点: {{ n.caution }}</p>
+</div>
+{% endfor %}
+</section>
+{% endblock %}

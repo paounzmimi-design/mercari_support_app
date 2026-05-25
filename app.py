@@ -54,6 +54,12 @@ def save_json(path: Path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def save_history(record):
+    data = load_json(HISTORY_FILE, {"history": []})
+    data.setdefault("history", []).append(record)
+    save_json(HISTORY_FILE, data)
+
+
 def current_user():
     return session.get("username")
 
@@ -260,6 +266,35 @@ def history():
     data = load_json(HISTORY_FILE, {"history": []})
     user_data = [h for h in reversed(data["history"]) if h.get("user") == current_user()]
     return render_template("history.html", records=user_data)
+
+
+@app.route("/history/<record_id>")
+def history_detail(record_id):
+    if not is_login_valid():
+        return redirect(url_for("login"))
+    data = load_json(HISTORY_FILE, {"history": []})
+    record = next((h for h in data["history"] if h.get("id") == record_id and h.get("user") == current_user()), None)
+    if not record:
+        flash("対象の履歴が見つからないか、閲覧権限がありません。")
+        return redirect(url_for("history"))
+    return render_template("history_detail.html", result=record)
+
+
+@app.route("/history/<record_id>/delete", methods=["POST"])
+def delete_history(record_id):
+    if not is_login_valid():
+        return redirect(url_for("login"))
+    data = load_json(HISTORY_FILE, {"history": []})
+    before = len(data.get("history", []))
+    data["history"] = [
+        h for h in data.get("history", []) if not (h.get("id") == record_id and h.get("user") == current_user())
+    ]
+    if len(data["history"]) < before:
+        save_json(HISTORY_FILE, data)
+        flash("履歴を削除しました")
+    else:
+        flash("削除対象の履歴が見つからないか、削除権限がありません。")
+    return redirect(url_for("history"))
 
 @app.route("/api/photo_checklist")
 def photo_checklist():
