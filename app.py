@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
 
 load_dotenv()
 
@@ -54,6 +55,44 @@ def save_json(path: Path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def normalize_users_data(raw):
+    users = []
+    for u in raw.get("users", []):
+        if isinstance(u, str):
+            users.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "username": u,
+                    "password_hash": "",
+                    "display_name": u,
+                    "expires_at": (datetime.utcnow() + timedelta(days=3650)).isoformat(),
+                    "is_active": True,
+                    "created_at": datetime.utcnow().isoformat(),
+                    "memo": "migrated legacy user",
+                }
+            )
+        elif isinstance(u, dict):
+            users.append(
+                {
+                    "id": u.get("id") or str(uuid.uuid4()),
+                    "username": (u.get("username") or "").strip(),
+                    "password_hash": u.get("password_hash", ""),
+                    "display_name": u.get("display_name") or u.get("username") or "",
+                    "expires_at": u.get("expires_at") or (datetime.utcnow() + timedelta(days=3650)).isoformat(),
+                    "is_active": bool(u.get("is_active", True)),
+                    "created_at": u.get("created_at") or datetime.utcnow().isoformat(),
+                    "memo": u.get("memo", ""),
+                }
+            )
+    return {"users": [u for u in users if u.get("username")]}
+
+
+def load_users():
+    data = normalize_users_data(load_json(USERS_FILE, {"users": []}))
+    save_json(USERS_FILE, data)
+    return data
+
+
 def save_history(record):
     data = load_json(HISTORY_FILE, {"history": []})
     data.setdefault("history", []).append(record)
@@ -66,10 +105,24 @@ def current_user():
 
 def is_login_valid():
     username = session.get("username")
-    expires_at = session.get("expires_at")
-    if not username or not expires_at:
+    if not username:
         return False
-    return datetime.utcnow() < datetime.fromisoformat(expires_at)
+    user = find_user_by_username(username)
+    if not user:
+        return False
+    try:
+        return user.get("is_active", False) and datetime.utcnow() < datetime.fromisoformat(user.get("expires_at", ""))
+    except ValueError:
+        return False
+
+
+def is_admin_valid():
+    return bool(session.get("is_admin"))
+
+
+def find_user_by_username(username):
+    users = load_users()["users"]
+    return next((u for u in users if u.get("username") == username), None)
 
 
 def condition_tag(condition):
@@ -82,7 +135,7 @@ def condition_tag(condition):
         return "使用感あり"
     return condition
 
-
+# (snip unchanged helper builders)
 def build_titles(item_name, condition, category):
     clean_condition = condition_tag(condition)
     return [
@@ -90,7 +143,6 @@ def build_titles(item_name, condition, category):
         f"{item_name} {clean_condition} 丁寧梱包で安心してお取引",
         f"{item_name} {category} {clean_condition} 早め発送 すぐ使える",
     ]
-
 
 def build_descriptions(item_name, condition, category, notes):
     notes_text = notes if notes else "自宅保管のため、細かな点は写真でご確認ください。"
@@ -105,54 +157,14 @@ def build_descriptions(item_name, condition, category, notes):
         "【ひとこと】気持ちのよいお取引を心がけています。\n"
         "※中古品のため、完璧を求める方はご購入前にご確認ください。"
     )
-    short = (
-        f"{item_name}の出品です。状態は{condition}です。\n"
-        f"{notes_text}\n"
-        "写真で状態をご確認のうえ、ご検討ください。\n"
-        "匿名配送で1〜2日以内に発送予定です。"
-    )
-    safe = (
-        f"ご覧いただきありがとうございます。{item_name}（{category}）です。\n"
-        f"状態は{condition}で、{notes_text}\n"
-        "気になる箇所はできるだけ写真でわかるようにしています。\n"
-        "中古品にご理解のある方のみお願いいたします。ご不明点はお気軽にコメントください。"
-    )
+    short = f"{item_name}の出品です。状態は{condition}です。\n{notes_text}\n写真で状態をご確認のうえ、ご検討ください。\n匿名配送で1〜2日以内に発送予定です。"
+    safe = f"ご覧いただきありがとうございます。{item_name}（{category}）です。\n状態は{condition}で、{notes_text}\n気になる箇所はできるだけ写真でわかるようにしています。\n中古品にご理解のある方のみお願いいたします。ご不明点はお気軽にコメントください。"
     return [shared, short, safe]
-
 
 def analyze_result(item_name, condition, category, notes, expected_price, shipping_cost, purchase_price, fee, profit):
     easy = "出品しやすい" if category in ["服", "本", "美容品", "バッグ"] else "やや準備が必要"
     beginner = "★★★★★" if easy == "出品しやすい" else "★★★☆☆"
-    quick_price = max(expected_price - 500, 300)
-    high_price = expected_price + 700
-    caution_line = max(expected_price - 1200, 300)
-
-    if shipping_cost > 800:
-        shipping_note = "送料が高めなので、配送方法の見直しで利益改善が期待できます。"
-    else:
-        shipping_note = "送料は許容範囲です。梱包サイズを抑えるとさらに安心です。"
-
-    if profit < 0:
-        conclusion = "この価格だと赤字のため、価格調整または送料見直しがおすすめです。"
-    elif profit < 500:
-        conclusion = "出品は可能ですが利益が薄めです。価格か送料を少し調整しましょう。"
-    else:
-        conclusion = "初心者でも進めやすい条件です。このまま出品準備を進められます。"
-
-    return {
-        "listing_ease": easy,
-        "beginner_score": beginner,
-        "one_line": conclusion,
-        "price_thinking": "同じ商品の最近の売却価格を3件ほど確認し、手数料10%と送料を引いて利益が残る価格を基準にします。",
-        "quick_sell_price": quick_price,
-        "high_trial_price": high_price,
-        "discount_caution": caution_line,
-        "shipping_note": shipping_note,
-        "photo_must": CATEGORY_PHOTO_POINTS.get(category, CATEGORY_PHOTO_POINTS["その他"]),
-        "improve_if_slow": ["タイトル冒頭に商品名と型番を入れる", "1枚目を明るい全体写真に差し替える", "説明文に傷の場所を具体的に追記する"],
-        "next_actions": ["タイトル案から1つ選んでコピー", "説明文案に実物情報を追記", "価格を最終調整して出品"],
-    }
-
+    return {"listing_ease": easy, "beginner_score": beginner, "one_line": "初心者でも進めやすい条件です。このまま出品準備を進められます。" if profit >= 500 else "出品は可能ですが利益が薄めです。価格か送料を少し調整しましょう。", "price_thinking": "同じ商品の最近の売却価格を3件ほど確認し、手数料10%と送料を引いて利益が残る価格を基準にします。", "quick_sell_price": max(expected_price - 500, 300), "high_trial_price": expected_price + 700, "discount_caution": max(expected_price - 1200, 300), "shipping_note": "送料が高めなので、配送方法の見直しで利益改善が期待できます。" if shipping_cost > 800 else "送料は許容範囲です。梱包サイズを抑えるとさらに安心です。", "photo_must": CATEGORY_PHOTO_POINTS.get(category, CATEGORY_PHOTO_POINTS["その他"]), "improve_if_slow": ["タイトル冒頭に商品名と型番を入れる", "1枚目を明るい全体写真に差し替える", "説明文に傷の場所を具体的に追記する"], "next_actions": ["タイトル案から1つ選んでコピー", "説明文案に実物情報を追記", "価格を最終調整して出品"]}
 
 def build_next_recommendations(category):
     mapping = {
@@ -180,11 +192,9 @@ def build_next_recommendations(category):
         )
     return rows
 
-
-# routes below
 @app.context_processor
 def inject_global():
-    return {"disclaimer": DISCLAIMER, "current_user": current_user(), "login_valid": is_login_valid()}
+    return {"disclaimer": DISCLAIMER, "current_user": current_user(), "login_valid": is_login_valid(), "admin_valid": is_admin_valid()}
 
 @app.route("/")
 def index():
@@ -197,110 +207,140 @@ def login():
     ensure_data_files()
     if request.method == "POST":
         username = request.form.get("username", "").strip()
-        if not username:
-            flash("ユーザー名を入力してください。")
+        password = request.form.get("password", "")
+        user = find_user_by_username(username)
+        if not user or not user.get("password_hash") or not check_password_hash(user["password_hash"], password):
+            flash("ユーザー名またはパスワードが違います")
             return render_template("login.html")
-        users = load_json(USERS_FILE, {"users": []})
-        if username not in users["users"]:
-            users["users"].append(username)
-            save_json(USERS_FILE, users)
-        expires = datetime.utcnow() + timedelta(hours=24)
-        session["username"] = username
-        session["expires_at"] = expires.isoformat()
-        flash("ログインしました（利用期限: 24時間）")
+        if not user.get("is_active", False):
+            flash("このアカウントは停止中です")
+            return render_template("login.html")
+        if datetime.utcnow() >= datetime.fromisoformat(user["expires_at"]):
+            flash("利用期限が切れています")
+            return render_template("login.html")
+        session["username"] = user["username"]
+        flash("ログインしました")
         return redirect(url_for("index"))
     return render_template("login.html")
 
-@app.route("/logout")
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    admin_username = os.getenv("ADMIN_USERNAME")
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    missing = not admin_username or not admin_password
+    if request.method == "POST" and not missing:
+        if request.form.get("username") == admin_username and request.form.get("password") == admin_password:
+            session["is_admin"] = True
+            return redirect(url_for("admin_top"))
+        flash("管理者ユーザー名またはパスワードが違います")
+    return render_template("admin_login.html", admin_missing=missing)
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("is_admin", None)
+    flash("管理者ログアウトしました")
+    return redirect(url_for("admin_login"))
+
+@app.route("/admin")
+def admin_top():
+    if not is_admin_valid():
+        return redirect(url_for("admin_login"))
+    users = load_users()["users"]
+    now = datetime.utcnow()
+    active_count = sum(1 for u in users if u.get("is_active"))
+    stopped_count = sum(1 for u in users if not u.get("is_active"))
+    expired_count = sum(1 for u in users if u.get("expires_at") and datetime.fromisoformat(u["expires_at"]) <= now)
+    total_history = len(load_json(HISTORY_FILE, {"history": []}).get("history", []))
+    return render_template("admin_dashboard.html", users=users, total_users=len(users), active_count=active_count, stopped_count=stopped_count, expired_count=expired_count, total_history=total_history, now=now)
+
+@app.route('/admin/users/new', methods=['GET','POST'])
+def admin_user_new():
+    if not is_admin_valid():
+        return redirect(url_for('admin_login'))
+    if request.method == 'POST':
+        data = load_users()
+        username = request.form.get('username','').strip()
+        if not username or not request.form.get('password'):
+            flash('ユーザー名とパスワードは必須です')
+            return render_template('admin_user_form.html', mode='new')
+        if any(u['username']==username for u in data['users']):
+            flash('同じユーザー名は使えません')
+            return render_template('admin_user_form.html', mode='new')
+        expires_at = request.form.get('expires_at') or (datetime.utcnow()+timedelta(days=30)).isoformat(timespec='minutes')
+        data['users'].append({'id':str(uuid.uuid4()),'username':username,'password_hash':generate_password_hash(request.form.get('password')),'display_name':request.form.get('display_name','').strip() or username,'expires_at':expires_at,'is_active':True,'created_at':datetime.utcnow().isoformat(),'memo':request.form.get('memo','').strip()})
+        save_json(USERS_FILE, data)
+        return redirect(url_for('admin_top'))
+    return render_template('admin_user_form.html', mode='new')
+
+@app.route('/admin/users/<user_id>/edit', methods=['GET','POST'])
+def admin_user_edit(user_id):
+    if not is_admin_valid(): return redirect(url_for('admin_login'))
+    data = load_users(); user = next((u for u in data['users'] if u['id']==user_id), None)
+    if not user: flash('ユーザーが見つかりません'); return redirect(url_for('admin_top'))
+    if request.method=='POST':
+        user['display_name']=request.form.get('display_name','').strip() or user['display_name']
+        if request.form.get('password','').strip(): user['password_hash']=generate_password_hash(request.form.get('password').strip())
+        user['expires_at']=request.form.get('expires_at') or user['expires_at']
+        user['is_active']=request.form.get('is_active')=='true'
+        user['memo']=request.form.get('memo','').strip()
+        save_json(USERS_FILE, data)
+        return redirect(url_for('admin_top'))
+    return render_template('admin_user_form.html', mode='edit', user=user)
+
+@app.route('/admin/users/<user_id>/delete', methods=['POST'])
+def admin_user_delete(user_id):
+    if not is_admin_valid(): return redirect(url_for('admin_login'))
+    data = load_users(); data['users'] = [u for u in data['users'] if u['id']!=user_id]; save_json(USERS_FILE, data)
+    flash('ユーザーを削除しました')
+    return redirect(url_for('admin_top'))
+
+@app.route('/logout')
 def logout():
-    session.clear()
-    flash("ログアウトしました。")
-    return redirect(url_for("login"))
+    session.pop('username', None)
+    flash('ログアウトしました。')
+    return redirect(url_for('login'))
 
-@app.route("/diagnose", methods=["GET", "POST"])
+@app.route('/diagnose', methods=['GET', 'POST'])
 def diagnose():
-    if not is_login_valid():
-        return redirect(url_for("login"))
-    if request.method == "POST":
-        item_name = request.form.get("item_name", "").strip()
-        condition = request.form.get("condition", "").strip()
-        category = request.form.get("category", "").strip() or "その他"
-        notes = request.form.get("notes", "").strip()
-        purchase_price = int(request.form.get("purchase_price") or 0)
-        expected_price = int(request.form.get("expected_price") or 0)
-        shipping_cost = int(request.form.get("shipping_cost") or 0)
-        fee = int(expected_price * 0.1)
-        profit = expected_price - purchase_price - shipping_cost - fee
+    if not is_login_valid(): return redirect(url_for('login'))
+    if request.method == 'POST':
+        item_name=request.form.get('item_name','').strip(); condition=request.form.get('condition','').strip(); category=request.form.get('category','').strip() or 'その他'; notes=request.form.get('notes','').strip(); purchase_price=int(request.form.get('purchase_price') or 0); expected_price=int(request.form.get('expected_price') or 0); shipping_cost=int(request.form.get('shipping_cost') or 0); fee=int(expected_price*0.1); profit=expected_price-purchase_price-shipping_cost-fee
+        result={"id":str(uuid.uuid4()),"user":current_user(),"created_at":datetime.utcnow().isoformat(),"item_name":item_name,"condition":condition,"category":category,"notes":notes,"titles":build_titles(item_name, condition, category),"descriptions":build_descriptions(item_name, condition, category, notes),"purchase_price":purchase_price,"expected_price":expected_price,"shipping_cost":shipping_cost,"fee":fee,"profit":profit,"analysis":analyze_result(item_name, condition, category, notes, expected_price, shipping_cost, purchase_price, fee, profit),"next_recommendations":build_next_recommendations(category)}
+        save_history(result); session['latest_result']=result; return redirect(url_for('result'))
+    return render_template('diagnose.html')
 
-        titles = build_titles(item_name, condition, category)
-        descriptions = build_descriptions(item_name, condition, category, notes)
-        analysis = analyze_result(item_name, condition, category, notes, expected_price, shipping_cost, purchase_price, fee, profit)
-        next_recommendations = build_next_recommendations(category)
-
-        result = {
-            "id": str(uuid.uuid4()), "user": current_user(), "created_at": datetime.utcnow().isoformat(),
-            "item_name": item_name, "condition": condition, "category": category, "notes": notes,
-            "titles": titles, "descriptions": descriptions, "purchase_price": purchase_price,
-            "expected_price": expected_price, "shipping_cost": shipping_cost, "fee": fee, "profit": profit,
-            "analysis": analysis, "next_recommendations": next_recommendations,
-        }
-        save_history(result)
-        session["latest_result"] = result
-        return redirect(url_for("result"))
-    return render_template("diagnose.html")
-
-@app.route("/result")
+@app.route('/result')
 def result():
-    if not is_login_valid():
-        return redirect(url_for("login"))
-    data = session.get("latest_result")
-    if not data:
-        flash("先に商品診断を実行してください。")
-        return redirect(url_for("diagnose"))
-    return render_template("result.html", result=data)
+    if not is_login_valid(): return redirect(url_for('login'))
+    data = session.get('latest_result')
+    if not data: flash('先に商品診断を実行してください。'); return redirect(url_for('diagnose'))
+    return render_template('result.html', result=data)
 
-@app.route("/history")
+@app.route('/history')
 def history():
-    if not is_login_valid():
-        return redirect(url_for("login"))
-    data = load_json(HISTORY_FILE, {"history": []})
-    user_data = [h for h in reversed(data["history"]) if h.get("user") == current_user()]
-    return render_template("history.html", records=user_data)
+    if not is_login_valid(): return redirect(url_for('login'))
+    data = load_json(HISTORY_FILE, {'history':[]}); user_data=[h for h in reversed(data['history']) if h.get('user')==current_user()]
+    return render_template('history.html', records=user_data)
 
-
-@app.route("/history/<record_id>")
+@app.route('/history/<record_id>')
 def history_detail(record_id):
-    if not is_login_valid():
-        return redirect(url_for("login"))
-    data = load_json(HISTORY_FILE, {"history": []})
-    record = next((h for h in data["history"] if h.get("id") == record_id and h.get("user") == current_user()), None)
-    if not record:
-        flash("対象の履歴が見つからないか、閲覧権限がありません。")
-        return redirect(url_for("history"))
-    return render_template("history_detail.html", result=record)
+    if not is_login_valid(): return redirect(url_for('login'))
+    data = load_json(HISTORY_FILE, {'history':[]}); record=next((h for h in data['history'] if h.get('id')==record_id and h.get('user')==current_user()), None)
+    if not record: flash('対象の履歴が見つからないか、閲覧権限がありません。'); return redirect(url_for('history'))
+    return render_template('history_detail.html', result=record)
 
-
-@app.route("/history/<record_id>/delete", methods=["POST"])
+@app.route('/history/<record_id>/delete', methods=['POST'])
 def delete_history(record_id):
-    if not is_login_valid():
-        return redirect(url_for("login"))
-    data = load_json(HISTORY_FILE, {"history": []})
-    before = len(data.get("history", []))
-    data["history"] = [
-        h for h in data.get("history", []) if not (h.get("id") == record_id and h.get("user") == current_user())
-    ]
-    if len(data["history"]) < before:
-        save_json(HISTORY_FILE, data)
-        flash("履歴を削除しました")
-    else:
-        flash("削除対象の履歴が見つからないか、削除権限がありません。")
-    return redirect(url_for("history"))
+    if not is_login_valid(): return redirect(url_for('login'))
+    data=load_json(HISTORY_FILE,{'history':[]}); before=len(data.get('history',[])); data['history']=[h for h in data.get('history',[]) if not (h.get('id')==record_id and h.get('user')==current_user())]
+    if len(data['history'])<before: save_json(HISTORY_FILE, data); flash('履歴を削除しました')
+    else: flash('削除対象の履歴が見つからないか、削除権限がありません。')
+    return redirect(url_for('history'))
 
-@app.route("/api/photo_checklist")
+@app.route('/api/photo_checklist')
 def photo_checklist():
-    category = request.args.get("category", "その他")
-    return jsonify(CATEGORY_PHOTO_POINTS.get(category, CATEGORY_PHOTO_POINTS["その他"]))
+    return jsonify(CATEGORY_PHOTO_POINTS.get(request.args.get('category', 'その他'), CATEGORY_PHOTO_POINTS['その他']))
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     ensure_data_files()
     app.run(debug=True)

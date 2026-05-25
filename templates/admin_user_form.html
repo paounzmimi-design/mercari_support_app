@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}ユーザー{{ '追加' if mode == 'new' else '編集' }}{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>ユーザー{{ '追加' if mode == 'new' else '編集' }}</h2>
+  <form method="post" class="form">
+    {% if mode == 'new' %}
+      <label>ユーザー名<input name="username" required></label>
+    {% else %}
+      <p>ユーザー名: <strong>{{ user.username }}</strong></p>
+    {% endif %}
+    <label>表示名<input name="display_name" value="{{ user.display_name if user else '' }}"></label>
+    <label>パスワード{% if mode == 'edit' %}（空欄なら変更なし）{% endif %}<input name="password" type="password" {% if mode == 'new' %}required{% endif %}></label>
+    <label>利用期限（ISO形式）<input name="expires_at" value="{{ user.expires_at if user else '' }}" placeholder="2026-12-31T23:59:00"></label>
+    {% if mode == 'edit' %}
+      <label>状態
+        <select name="is_active">
+          <option value="true" {% if user.is_active %}selected{% endif %}>有効</option>
+          <option value="false" {% if not user.is_active %}selected{% endif %}>停止</option>
+        </select>
+      </label>
+    {% endif %}
+    <label>メモ<textarea name="memo">{{ user.memo if user else '' }}</textarea></label>
+    <button type="submit">保存</button>
+  </form>
+</section>
+{% endblock %}
