@@ -219,7 +219,7 @@ def analyze_result(item_name, condition, category, notes, expected_price, shippi
         one_line = "初心者でも進めやすい条件です。このまま出品準備を進められます。" if profit >= 500 else "出品は可能ですが利益が薄めです。価格か送料を少し調整しましょう。"
     else:
         one_line = "販売後に手元に残る金額の目安です。送料が高い場合は、価格や発送方法を見直しましょう。"
-    price_thinking = "同じ商品の最近の売却価格を3件ほど確認し、手数料10%と送料を引いて利益が残る価格を基準にします。" if has_purchase_price else "同じ商品の最近の売却価格を3件ほど確認し、手数料10%と送料を引いた手元に残る金額を基準にします。"
+    price_thinking = "同じ商品の最近の売却価格を3件ほど確認し、手数料10%・送料・購入価格を考えて、無理のない価格を決めましょう。" if has_purchase_price else "同じ商品の最近の売却価格を3件ほど確認し、手数料10%と送料を考えて、手元に残る金額を見ながら価格を決めましょう。"
     shipping_note = "送料が高めなので、配送方法の見直しで利益改善が期待できます。" if shipping_cost > 800 else "送料は許容範囲です。梱包サイズを抑えるとさらに安心です。"
     if not has_purchase_price and shipping_cost > 800:
         shipping_note = "送料が高い場合は、価格や発送方法を見直しましょう。"
