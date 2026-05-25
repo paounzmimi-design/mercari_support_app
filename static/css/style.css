@@ -11,6 +11,15 @@ button:hover,.button:hover,nav a:hover { background:var(--accent-dark); color:#f
 .form input,.form textarea { width:100%; padding:12px; border-radius:12px; border:1px solid #e6d7d2; background:#fffefc; }
 .muted { color:var(--sub); font-size:.9rem; }
 .history-item { border-top:1px solid #f0e7e2; padding-top:10px; margin-top:10px; }
+.history-list { display:grid; grid-template-columns:1fr; gap:16px; }
+.history-card { background:#fffaf7; border:1px solid #f2e3dd; border-radius:16px; padding:16px; }
+.history-card h3 { margin-top:0; margin-bottom:8px; }
+.history-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+.history-actions form { margin:0; }
+.button.danger { background:#e7c2cb; }
+.button.danger:hover { background:#cc8fa1; }
+.empty-state { text-align:center; padding:20px 10px; }
+.history-meta p { margin:4px 0; }
 .feature-grid.one-col { display:grid; grid-template-columns:1fr; gap:10px; }
 .mini-card { background:#fff8fb; border:1px solid #f0d8df; border-radius:14px; padding:10px 12px; }
 pre { white-space:pre-wrap; background:#fdfaf8; padding:10px; border-radius:12px; }

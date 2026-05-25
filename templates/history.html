@@ -3,14 +3,29 @@
 <section class="card">
   <h2>履歴一覧</h2>
   {% if records %}
-    {% for r in records %}
-      <article class="history-item">
-        <h3>{{ r.item_name }}（{{ r.created_at[:10] }}）</h3>
-        <p>利益見込み: {{ r.profit }}円 / 価格: {{ r.expected_price }}円</p>
-      </article>
-    {% endfor %}
+    <div class="history-list">
+      {% for r in records %}
+        <article class="history-card">
+          <h3>{{ r.item_name }}</h3>
+          <p><strong>診断日:</strong> {{ r.created_at[:10] }}</p>
+          <p><strong>カテゴリ:</strong> {{ r.category }}</p>
+          <p><strong>状態:</strong> {{ r.condition }}</p>
+          <p><strong>価格:</strong> {{ r.expected_price }}円</p>
+          <p><strong>利益見込み:</strong> {{ r.profit }}円</p>
+          <div class="history-actions">
+            <a class="button" href="{{ url_for('history_detail', record_id=r.id) }}">詳細を見る</a>
+            <form method="post" action="{{ url_for('delete_history', record_id=r.id) }}" onsubmit="return confirm('この履歴を削除しますか？');">
+              <button type="submit" class="button danger">削除</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
   {% else %}
-    <p>履歴がありません。</p>
+    <div class="empty-state">
+      <p>まだ診断履歴はありません。まずは商品診断を試してみましょう。</p>
+      <a class="button large" href="{{ url_for('diagnose') }}">商品診断をはじめる</a>
+    </div>
   {% endif %}
 </section>
 {% endblock %}
