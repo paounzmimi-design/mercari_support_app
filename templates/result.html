@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="card"><h2>診断結果</h2><p>商品: {{ result.item_name }}（{{ result.category }}）</p></section>
+<section class="card"><h2>診断結果</h2><p>商品: {{ result.item_name }}（{{ result.category }}）</p>{% if usage %}<p><strong>本日の残り診断回数：{{ usage.daily_remaining }}回</strong> / 期間内の残り診断回数：{{ usage.monthly_remaining }}回</p>{% endif %}</section>
 
 <section class="card">
   <h3>出品しやすさ診断</h3>
