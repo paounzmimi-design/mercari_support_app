@@ -4,10 +4,14 @@
   <h2>商品診断</h2>
   <form method="post" class="form">
     <label>商品名<input name="item_name" required></label>
-    <label>状態<input name="condition" placeholder="新品/美品/使用感あり" required></label>
-    <label>カテゴリ<input name="category" required></label>
-    <label>補足<textarea name="notes"></textarea></label>
-    <label>仕入れ価格(円)<input type="number" name="purchase_price" required></label>
+    <label>状態<input name="condition" placeholder="新品未使用/目立った傷なし/使用感あり" required></label>
+    <label>カテゴリ
+      <select name="category" required>
+        <option>服</option><option>靴</option><option>家電</option><option>本</option><option>ゲーム</option><option>美容品</option><option>バッグ</option><option>その他</option>
+      </select>
+    </label>
+    <label>補足（使用感・傷汚れ・付属品など）<textarea name="notes"></textarea></label>
+    <label>購入価格(円)<input type="number" name="purchase_price" required></label>
     <label>想定販売価格(円)<input type="number" name="expected_price" required></label>
     <label>送料(円)<input type="number" name="shipping_cost" required></label>
     <button type="submit">診断結果を見る</button>

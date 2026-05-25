@@ -1,12 +1,21 @@
-:root { --bg:#fffdf8; --card:#fff; --accent:#d7a4b1; --sub:#7f6f73; }
+:root { --bg:#f9f3ea; --card:#ffffff; --accent:#d8a1b0; --accent-dark:#bf8193; --text:#4d3b35; --sub:#7f6b63; }
 * { box-sizing:border-box; }
-body { margin:0; font-family:"Hiragino Kaku Gothic ProN", sans-serif; background:linear-gradient(#fffdf8,#f6eee9); color:#4a3f42; }
+body { margin:0; font-family:"Hiragino Kaku Gothic ProN", sans-serif; background:var(--bg); color:var(--text); line-height:1.7; }
 .container { max-width:760px; margin:20px auto; padding:0 14px; }
-.card { background:var(--card); border-radius:18px; padding:16px; margin-bottom:14px; box-shadow:0 6px 20px rgba(145,120,126,.12); }
+.card { background:var(--card); border-radius:20px; padding:18px; margin-bottom:16px; box-shadow:0 8px 24px rgba(130,96,87,.12); }
 .header h1 { margin:0 0 8px; font-size:1.35rem; }
-nav a,.button,button { background:#e8c4ce; color:#4a3f42; border:none; border-radius:14px; padding:10px 14px; text-decoration:none; margin:3px; display:inline-block; }
-.form label { display:block; margin:10px 0; }
-.form input,.form textarea { width:100%; padding:10px; border-radius:12px; border:1px solid #e6d7d2; }
+nav a,.button,button { background:var(--accent); color:var(--text); border:none; border-radius:14px; padding:12px 16px; text-decoration:none; margin:3px; display:inline-block; font-size:1rem; }
+button:hover,.button:hover,nav a:hover { background:var(--accent-dark); color:#fff; }
+.button.large { width:100%; text-align:center; font-weight:700; }
+.form label { display:block; margin:12px 0; }
+.form input,.form textarea { width:100%; padding:12px; border-radius:12px; border:1px solid #e6d7d2; background:#fffefc; }
 .muted { color:var(--sub); font-size:.9rem; }
 .history-item { border-top:1px solid #f0e7e2; padding-top:10px; margin-top:10px; }
-@media (max-width:600px){ .header h1{font-size:1.1rem;} }
+.feature-grid.one-col { display:grid; grid-template-columns:1fr; gap:10px; }
+.mini-card { background:#fff8fb; border:1px solid #f0d8df; border-radius:14px; padding:10px 12px; }
+pre { white-space:pre-wrap; background:#fdfaf8; padding:10px; border-radius:12px; }
+.copy-feedback { color:#8b5f6c; font-size:.9rem; margin-left:8px; }
+.warn { color:#9d1f35; font-weight:700; }
+.caution { color:#8b5a23; font-weight:700; }
+.strong { font-weight:700; }
+@media (max-width:600px){ .header h1{font-size:1.1rem;} .container{padding:0 10px;} }
