@@ -194,7 +194,19 @@ def build_next_recommendations(category):
 
 @app.context_processor
 def inject_global():
-    return {"disclaimer": DISCLAIMER, "current_user": current_user(), "login_valid": is_login_valid(), "admin_valid": is_admin_valid()}
+    login_ok = is_login_valid()
+    admin_ok = is_admin_valid()
+    endpoint = request.endpoint or ""
+    hide_user_menu = endpoint in {"login", "admin_login"}
+    hide_admin_menu = endpoint == "login"
+    return {
+        "disclaimer": DISCLAIMER,
+        "current_user": current_user(),
+        "login_valid": login_ok,
+        "admin_valid": admin_ok,
+        "show_user_menu": login_ok and not hide_user_menu,
+        "show_admin_menu": admin_ok and not hide_admin_menu,
+    }
 
 @app.route("/")
 def index():
