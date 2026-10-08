@@ -84,12 +84,27 @@ def test_batch_limit():
 
 def test_requires_paid_access_and_csrf(app):
     client = app.test_client()
-    assert client.get("/workbench").status_code == 401
+    response = client.get("/workbench")
+    assert response.status_code == 302 and response.location == "/account"
     uid = register(client)
     assert client.post("/batch", data={"csv": CSV}).status_code == 400
     assert client.post("/batch", data={"csrf": token(client), "csv": CSV}).status_code == 403
     assert sql(app,"SELECT COUNT(*) FROM items")[0][0] == 0
     assert client.post("/checkout", data={"csrf": token(client)}).status_code == 503
+
+
+def test_missing_login_redirects_reads_and_never_replays_writes(app):
+    client = app.test_client()
+    for path in ("/workbench", "/export", "/items/missing/edit"):
+        response = client.get(path)
+        assert response.status_code == 302 and response.location == "/account"
+    page = client.get("/account").get_data(as_text=True)
+    assert "ログインが必要です" in page
+    assert client.post("/single", data={"csrf": token(client)}).status_code == 401
+    assert sql(app, "SELECT COUNT(*) FROM items")[0][0] == 0
+    with client.session_transaction() as saved:
+        assert "uid" not in saved
+    assert client.post("/stripe/webhook", data=b"{}").status_code == 400
 
 
 def test_purchase_batch_sale_export_and_expiry(app):
@@ -270,7 +285,8 @@ def test_recovery_rotates_code_and_invalidates_old_sessions(app):
     assert response.status_code==200
     new_code=re.search(r'id="recovery-code" value="([^"]+)"',response.get_data(as_text=True)).group(1)
     assert new_code != code
-    assert stale.get("/workbench").status_code==401
+    response = stale.get("/workbench")
+    assert response.status_code == 302 and response.location == "/account"
     assert recovery.get("/workbench").status_code==200
     assert recovery.post("/recover",data={"csrf":token(recovery),"name":"tester","recovery":code,"password":"another-long-password","password_confirm":"another-long-password"}).status_code==400
     other=app.test_client()

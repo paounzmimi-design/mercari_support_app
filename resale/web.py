@@ -94,6 +94,15 @@ def create_app(config=None):
                 abort(401)
         return uid
 
+    @app.errorhandler(401)
+    def sign_in_required(error):
+        session.clear()
+        flash("ログインが必要です。登録済みのユーザー名とパスワードでログインしてください")
+        if request.method in {"GET", "HEAD"}:
+            return redirect(url_for("account"))
+        # Never replay a failed mutation after login.
+        return render_template("account.html"), 401
+
     def access(uid):
         with db() as conn:
             return conn.execute("SELECT MAX(expires) FROM orders WHERE owner=? AND revoked=0", (uid,)).fetchone()[0] or 0
