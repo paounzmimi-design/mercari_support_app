@@ -70,7 +70,7 @@ def create_app(config=None):
         if "auth_version" not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0")
         order_columns = {row[1] for row in conn.execute("PRAGMA table_info(orders)")}
-        for column, definition in [("created", "INTEGER"), ("checkout_url", "TEXT")]:
+        for column, definition in [("created", "INTEGER"), ("checkout_url", "TEXT"), ("closed", "INTEGER NOT NULL DEFAULT 0")]:
             if column not in order_columns:
                 conn.execute(f"ALTER TABLE orders ADD COLUMN {column} {definition}")
     os.chmod(database, 0o600)
@@ -319,9 +319,11 @@ def create_app(config=None):
             conn.execute("BEGIN IMMEDIATE")
             # Keep a single pending purchase across retries and simultaneous requests.
             # Do not replace a pending purchase until its Stripe session is expired.
-            pending = conn.execute("SELECT * FROM orders WHERE owner=? AND expires IS NULL AND created>? ORDER BY created DESC LIMIT 1", (uid,now()-3600)).fetchone()
+            pending = conn.execute("SELECT * FROM orders WHERE owner=? AND expires IS NULL AND closed=0 ORDER BY created DESC LIMIT 1", (uid,)).fetchone()
             if pending:
                 order, created, amount = pending["id"], pending["created"], pending["amount"]
+                if created is None or created+3600 <= now():
+                    abort(409, description="前の支払いを確認中です。再購入せず、しばらくしてから確認してください")
                 if pending["checkout_url"]:
                     return redirect(pending["checkout_url"], code=303)
             else:
