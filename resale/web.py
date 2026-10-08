@@ -6,6 +6,7 @@ import re
 import secrets
 import sqlite3
 import time
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -15,6 +16,7 @@ from flask import Flask, abort, flash, redirect, render_template, request, sessi
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from resale.pricing import parse_batch, prepare, proceeds, yen
+from resale.ai_draft import DraftError, generate_listing
 
 PERIOD = 30 * 86400
 
@@ -31,6 +33,8 @@ def create_app(config=None):
         WEBHOOK_SECRET=os.getenv("RESALE_STRIPE_TEST_WEBHOOK_SECRET", ""),
         PUBLIC_URL=os.getenv("RESALE_PUBLIC_URL", ""),
         PRICE_YEN=980, NOW=time.time,
+        GEMINI_KEY=os.getenv("RESALE_GEMINI_API_KEY", ""),
+        GEMINI_MODEL=os.getenv("RESALE_GEMINI_MODEL", ""),
     )
     app.config.update(config or {})
     if not app.secret_key or len(app.secret_key) < 32:
@@ -63,6 +67,9 @@ def create_app(config=None):
         CREATE TABLE IF NOT EXISTS blocked_intents(intent TEXT PRIMARY KEY);
         CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY);
         CREATE TABLE IF NOT EXISTS attempts(key TEXT, created INTEGER);
+        CREATE TABLE IF NOT EXISTS ai_drafts(item_id TEXT PRIMARY KEY, owner TEXT,
+          source_hash TEXT, title TEXT, description TEXT, created INTEGER);
+        CREATE TABLE IF NOT EXISTS ai_attempts(owner TEXT, day TEXT, created INTEGER);
         """)
         columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
         if "recovery_hash" not in columns:
@@ -208,15 +215,53 @@ def create_app(config=None):
         uid = user_id()
         with db() as conn:
             records = conn.execute("SELECT * FROM items WHERE owner=? ORDER BY created DESC, id", (uid,)).fetchall()
+            drafts = {row["item_id"]: row for row in conn.execute(
+                "SELECT * FROM ai_drafts WHERE owner=?", (uid,)).fetchall()}
         items, actual_total = [], 0
         for row in records:
             item = json.loads(row["payload"])
             item.update(id=row["id"], status=row["status"], sold_price=row["sold_price"])
+            draft = drafts.get(row["id"])
+            item["ai_draft"] = draft if draft and draft["source_hash"] == hashlib.sha256(row["payload"].encode()).hexdigest() else None
             item["actual_net"] = None if row["sold_price"] is None else proceeds(row["sold_price"], item["shipping"], item["packing"])
             if item["actual_net"] is not None:
                 actual_total += item["actual_net"]
             items.append(item)
-        return render_template("workbench.html", items=items, active=access(uid)>now(), actual_total=actual_total)
+        return render_template("workbench.html", items=items, active=access(uid)>now(),
+                               ai_enabled=bool(app.config["GEMINI_KEY"] and app.config["GEMINI_MODEL"]), actual_total=actual_total)
+
+    @app.post("/items/<item_id>/ai-draft")
+    def ai_draft(item_id):
+        uid = paid_user()
+        if not app.config["GEMINI_KEY"] or not app.config["GEMINI_MODEL"]:
+            abort(503, description="AIの下書きはまだ設定されていません")
+        day = datetime.fromtimestamp(now(), timezone.utc).date().isoformat()
+        with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT payload FROM items WHERE id=? AND owner=?", (item_id, uid)).fetchone()
+            if not row:
+                abort(404)
+            # Reserve attempts before external calls, across workers and restarts.
+            conn.execute("DELETE FROM ai_attempts WHERE day<?", (day,))
+            if (conn.execute("SELECT COUNT(*) FROM ai_attempts WHERE day=?", (day,)).fetchone()[0] >= 10
+                    or conn.execute("SELECT COUNT(*) FROM ai_attempts WHERE day=? AND owner=?", (day, uid)).fetchone()[0] >= 2):
+                abort(429, description="本日のAI下書きの回数上限に達しました")
+            conn.execute("INSERT INTO ai_attempts(owner,day,created) VALUES (?,?,?)", (uid, day, now()))
+            payload = row["payload"]
+        try:
+            title, description = generate_listing(json.loads(payload), app.config["GEMINI_KEY"], app.config["GEMINI_MODEL"])
+        except DraftError:
+            flash("AIの下書きを作れませんでした。入力情報を確認するか、時間を置いてください")
+            return redirect(url_for("workbench"))
+        with db() as conn:
+            current = conn.execute("SELECT payload FROM items WHERE id=? AND owner=?", (item_id, uid)).fetchone()
+            if not current or current["payload"] != payload:
+                flash("商品情報が変更されたため、古い下書きは保存しませんでした")
+                return redirect(url_for("workbench"))
+            conn.execute("INSERT OR REPLACE INTO ai_drafts VALUES (?,?,?,?,?,?)",
+                         (item_id, uid, hashlib.sha256(payload.encode()).hexdigest(), title, description, now()))
+        flash("AI下書きを作成しました。内容を確認してからコピーしてください")
+        return redirect(url_for("workbench"))
 
     @app.post("/batch")
     def batch():
@@ -266,6 +311,7 @@ def create_app(config=None):
                 return render_template("edit.html", item_id=item_id, fields=request.form), 400
             with db() as conn:
                 conn.execute("UPDATE items SET payload=? WHERE id=? AND owner=?", (json.dumps(item,ensure_ascii=False), item_id, uid))
+                conn.execute("DELETE FROM ai_drafts WHERE item_id=? AND owner=?", (item_id, uid))
             flash("商品情報を更新しました")
             return redirect(url_for("workbench"))
         item = json.loads(row["payload"])
@@ -297,6 +343,7 @@ def create_app(config=None):
         with db() as conn:
             if not conn.execute("DELETE FROM items WHERE id=? AND owner=?", (item_id, uid)).rowcount:
                 abort(404)
+            conn.execute("DELETE FROM ai_drafts WHERE item_id=? AND owner=?", (item_id, uid))
         flash("商品を削除しました")
         return redirect(url_for("workbench"))
 
