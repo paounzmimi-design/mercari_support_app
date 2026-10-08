@@ -69,6 +69,10 @@ def create_app(config=None):
             conn.execute("ALTER TABLE users ADD COLUMN recovery_hash TEXT")
         if "auth_version" not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0")
+        order_columns = {row[1] for row in conn.execute("PRAGMA table_info(orders)")}
+        for column, definition in [("created", "INTEGER"), ("checkout_url", "TEXT")]:
+            if column not in order_columns:
+                conn.execute(f"ALTER TABLE orders ADD COLUMN {column} {definition}")
     os.chmod(database, 0o600)
 
     def now():
@@ -126,6 +130,15 @@ def create_app(config=None):
     @app.route("/")
     def home():
         return render_template("home.html")
+
+    @app.get("/healthz")
+    def healthz():
+        try:
+            with db() as conn:
+                conn.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+        except sqlite3.Error:
+            return {"ok": False}, 503
+        return {"ok": True}
 
     @app.route("/account", methods=["GET", "POST"])
     def account():
@@ -302,15 +315,25 @@ def create_app(config=None):
             abort(503, description="試作版です。決済テストはまだ設定されていません")
         if access(uid)>now():
             abort(409, description="利用期間中です。期限後に延長できます")
-        order = secrets.token_hex(16)
         with db() as conn:
-            conn.execute("INSERT INTO orders(id,owner,amount) VALUES (?,?,?)", (order, uid, app.config["PRICE_YEN"]))
+            conn.execute("BEGIN IMMEDIATE")
+            # Keep a single pending purchase across retries and simultaneous requests.
+            # Do not replace a pending purchase until its Stripe session is expired.
+            pending = conn.execute("SELECT * FROM orders WHERE owner=? AND expires IS NULL AND created>? ORDER BY created DESC LIMIT 1", (uid,now()-3600)).fetchone()
+            if pending:
+                order, created, amount = pending["id"], pending["created"], pending["amount"]
+                if pending["checkout_url"]:
+                    return redirect(pending["checkout_url"], code=303)
+            else:
+                order, created, amount = secrets.token_hex(16), now(), app.config["PRICE_YEN"]
+                conn.execute("INSERT INTO orders(id,owner,amount,created) VALUES (?,?,?,?)", (order,uid,amount,created))
         try:
             result = stripe.checkout.Session.create(
                 api_key=app.config["STRIPE_KEY"], idempotency_key=order,
                 mode="payment", payment_method_types=["card"],
+                expires_at=created+3600,
                 client_reference_id=order, metadata={"order": order},
-                line_items=[{"price_data": {"currency": "jpy", "unit_amount": app.config["PRICE_YEN"],
+                line_items=[{"price_data": {"currency": "jpy", "unit_amount": amount,
                     "product_data": {"name": "出品・手残り管理 30日間（テスト）"}}, "quantity": 1}],
                 success_url=app.config["PUBLIC_URL"].rstrip("/")+"/workbench",
                 cancel_url=app.config["PUBLIC_URL"].rstrip("/")+"/workbench")
@@ -320,7 +343,7 @@ def create_app(config=None):
         if result.livemode or checkout_url.scheme != "https" or checkout_url.hostname != "checkout.stripe.com":
             abort(503)
         with db() as conn:
-            conn.execute("UPDATE orders SET checkout=? WHERE id=?", (result.id, order))
+            conn.execute("UPDATE orders SET checkout=?,checkout_url=? WHERE id=?", (result.id, result.url, order))
         return redirect(result.url, code=303)
 
     @app.post("/stripe/webhook")
