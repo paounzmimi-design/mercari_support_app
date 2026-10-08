@@ -103,9 +103,9 @@ Checkout作成成功のレスポンスだけ失った場合は、作成時刻周
 1回最大100注文を処理します。小規模試作用で、大規模運用のページ分割・監視対象ローテーションは未対応です。
 
 `python -m resale.operations` は決済照合と健康確認を順に行い、集計JSONと終了コードを出します。
-`deploy/resale-operations.service` と `.timer` は5分間隔の雛形です。まだVPSへ設置していません。
-設置前に専用の仮想環境 `.venv-resale`、600権限の `.env-resale`、専用DBの初期化、
-`RESALE_DATABASE=/root/mercari_support_app/resale-private/workbench.sqlite3`、テストキー、
+`deploy/resale-operations.service` と `.timer` は5分間隔の設定です。まだVPSへ設置していません。
+設置前に `/root/mercari_resale_preview` に専用仮想環境 `.venv`、600権限の `.env-preview`、
+専用DB `/root/mercari_resale_preview/resale-private/workbench.sqlite3`、テストキー、
 試作用アプリの5200ポート起動を確認してください。既存アプリの環境ファイルは使いません。
 DB列追加は新しい `create_app()` の初期化時に行います。旧試作DBで照合コマンドを先に実行しないでください。
 
