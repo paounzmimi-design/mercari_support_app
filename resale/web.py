@@ -6,7 +6,8 @@ import re
 import secrets
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -235,7 +236,7 @@ def create_app(config=None):
         uid = paid_user()
         if not app.config["GEMINI_KEY"] or not app.config["GEMINI_MODEL"]:
             abort(503, description="AIの下書きはまだ設定されていません")
-        day = datetime.fromtimestamp(now(), timezone.utc).date().isoformat()
+        day = datetime.fromtimestamp(now(), ZoneInfo("Asia/Tokyo")).date().isoformat()
         with db() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT payload FROM items WHERE id=? AND owner=?", (item_id, uid)).fetchone()
