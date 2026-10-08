@@ -1,6 +1,7 @@
 """Optional listing copy assistance. Outputs require human fact checking."""
 import json
 import re
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
@@ -16,12 +17,13 @@ def generate_listing(item, api_key, model, opener=urlopen):
         "日本語の商品出品文を作る。次のJSONに明記された事実だけを短く整える。"
         "ブランド・動作・付属品・発送・保証・真贋・購入時期など未入力の事実を補わない。"
         "勧誘、断定的な品質評価、ハッシュタグ、URLを含めない。"
+        "descriptionにはnameとconditionの文字列を一字も変えずに必ず含める。"
         "JSONオブジェクトのtitle（40文字以内）とdescription（700文字以内）だけ返す。\n"
         + json.dumps(facts, ensure_ascii=False)
     )
     body = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
                        "generationConfig": {"responseMimeType": "application/json",
-                                            "temperature": 0.2, "maxOutputTokens": 500}},
+                                            "temperature": 0.2, "maxOutputTokens": 800}},
                       ensure_ascii=False).encode()
     req = Request("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent",
                   data=body, headers={"Content-Type": "application/json", "x-goog-api-key": api_key})
@@ -30,17 +32,22 @@ def generate_listing(item, api_key, model, opener=urlopen):
             data = json.load(response)
         candidate = data["candidates"][0]
         if candidate.get("finishReason") != "STOP":
-            raise DraftError("AIの文章を確認できませんでした")
-        result = json.loads(candidate["content"]["parts"][0]["text"])
+            raise DraftError("AIの出力が途中で終わりました。別の情報で試してください")
+        result = json.loads("".join(part.get("text", "") for part in
+            candidate["content"]["parts"] if not part.get("thought")))
         title, description = result["title"], result["description"]
         if (not isinstance(title, str) or not 1 <= len(title.strip()) <= 40
                 or not isinstance(description, str) or not 1 <= len(description.strip()) <= 700
-                or "http" in (title + description).lower()
-                or item["name"] not in description or item["condition"] not in description):
-            raise DraftError("AIの文章を確認できませんでした")
+                or "http" in (title + description).lower()):
+            raise DraftError("AIの文章形式を確認できませんでした")
+        if item["name"] not in description or item["condition"] not in description:
+            raise DraftError("商品名・状態が下書きに正確に含まれず、保存しませんでした")
         return title.strip(), description.strip()
     except DraftError:
         raise
+    except HTTPError as exc:
+        # Only the numeric status is safe to display; never expose response bodies.
+        raise DraftError(f"AIサービスに接続できませんでした（HTTP {exc.code}）") from exc
     except Exception as exc:
         # API errors may contain credentials and prompt data. Never show them.
         raise DraftError("AIの文章を作れませんでした。時間を置いて再試行してください") from exc
