@@ -3,12 +3,12 @@ Description=Check resale prototype and reconcile TEST payments
 
 [Service]
 Type=oneshot
-WorkingDirectory=/root/mercari_support_app
-EnvironmentFile=/root/mercari_support_app/.env-resale
-ExecStart=/root/mercari_support_app/.venv-resale/bin/python -m resale.operations
+WorkingDirectory=/root/mercari_resale_preview
+EnvironmentFile=/root/mercari_resale_preview/.env-preview
+ExecStart=/root/mercari_resale_preview/.venv/bin/python -m resale.operations
 TimeoutStartSec=180
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/root/mercari_support_app/resale-private
+ReadWritePaths=/root/mercari_resale_preview/resale-private
