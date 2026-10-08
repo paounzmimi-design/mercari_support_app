@@ -193,7 +193,11 @@ def test_checkout_creates_trusted_order_and_return_does_not_grant(app,monkeypatc
     assert "payment_method_types" not in captured
     assert captured["line_items"][0]["price_data"]["unit_amount"] == 980
     assert sql(app,"SELECT checkout,expires FROM orders")[0] == ("cs_test_new",None)
-    assert client.get("/workbench?session_id=cs_test_new").status_code == 200
+    response = client.get("/workbench?session_id=cs_test_new")
+    assert response.status_code == 200
+    policy = response.headers["Content-Security-Policy"]
+    form_action = next(part.strip() for part in policy.split(";") if part.strip().startswith("form-action "))
+    assert form_action == "form-action 'self' https://checkout.stripe.com"
     assert client.post("/batch",data={"csrf":token(client),"csv":CSV}).status_code == 403
 
 
