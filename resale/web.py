@@ -250,8 +250,8 @@ def create_app(config=None):
             payload = row["payload"]
         try:
             title, description = generate_listing(json.loads(payload), app.config["GEMINI_KEY"], app.config["GEMINI_MODEL"])
-        except DraftError:
-            flash("AIの下書きを作れませんでした。入力情報を確認するか、時間を置いてください")
+        except DraftError as exc:
+            flash(str(exc))
             return redirect(url_for("workbench"))
         with db() as conn:
             current = conn.execute("SELECT payload FROM items WHERE id=? AND owner=?", (item_id, uid)).fetchone()
