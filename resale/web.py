@@ -1,5 +1,6 @@
 """Separate test-only storefront. No production sales or legacy data migration."""
 import json
+import hashlib
 import os
 import re
 import secrets
@@ -13,13 +14,13 @@ import stripe
 from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from resale.pricing import parse_batch, proceeds, yen
+from resale.pricing import parse_batch, prepare, proceeds, yen
 
 PERIOD = 30 * 86400
 
 
 def create_app(config=None):
-    app = Flask(__name__, template_folder="templates")
+    app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config.update(
         SECRET_KEY=os.getenv("RESALE_SECRET_KEY"),
         DATABASE=os.getenv("RESALE_DATABASE", str(Path.cwd()/"resale-private"/"workbench.sqlite3")),
@@ -63,6 +64,11 @@ def create_app(config=None):
         CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY);
         CREATE TABLE IF NOT EXISTS attempts(key TEXT, created INTEGER);
         """)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        if "recovery_hash" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN recovery_hash TEXT")
+        if "auth_version" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0")
     os.chmod(database, 0o600)
 
     def now():
@@ -71,7 +77,8 @@ def create_app(config=None):
     def user_id():
         uid = session.get("uid")
         with db() as conn:
-            if not uid or not conn.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
+            row = conn.execute("SELECT auth_version FROM users WHERE id=?", (uid,)).fetchone() if uid else None
+            if not row or session.get("auth_version") != row["auth_version"]:
                 abort(401)
         return uid
 
@@ -85,6 +92,15 @@ def create_app(config=None):
             abort(403, description="利用期間が終了しています。記録の閲覧・書き出しは可能です。")
         return uid
 
+    def throttle():
+        key = request.remote_addr or "unknown"
+        with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("DELETE FROM attempts WHERE created<?", (now()-900,))
+            if conn.execute("SELECT COUNT(*) FROM attempts WHERE key=?", (key,)).fetchone()[0] >= 10:
+                abort(429)
+            conn.execute("INSERT INTO attempts VALUES (?,?)", (key, now()))
+
     @app.before_request
     def csrf():
         if request.method == "POST" and request.endpoint != "webhook":
@@ -97,6 +113,7 @@ def create_app(config=None):
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
         return response
 
@@ -113,31 +130,57 @@ def create_app(config=None):
     @app.route("/account", methods=["GET", "POST"])
     def account():
         if request.method == "POST":
-            key = request.remote_addr or "unknown"
-            with db() as conn:
-                conn.execute("BEGIN IMMEDIATE")
-                conn.execute("DELETE FROM attempts WHERE created<?", (now()-900,))
-                if conn.execute("SELECT COUNT(*) FROM attempts WHERE key=?", (key,)).fetchone()[0] >= 10:
-                    abort(429)
-                conn.execute("INSERT INTO attempts VALUES (?,?)", (key, now()))
+            throttle()
             name, password = request.form.get("name", ""), request.form.get("password", "")
             if not re.fullmatch(r"[A-Za-z0-9_-]{3,40}", name) or not 12 <= len(password) <= 128:
                 flash("ユーザー名は半角英数字等3〜40文字、パスワードは12〜128文字で入力してください")
                 return render_template("account.html"), 400
+            recovery = None
             with db() as conn:
+                conn.execute("BEGIN IMMEDIATE")
                 row = conn.execute("SELECT * FROM users WHERE name=?", (name,)).fetchone()
                 if request.form.get("action") == "register" and row is None:
                     uid = secrets.token_hex(16)
-                    conn.execute("INSERT INTO users VALUES (?,?,?)", (uid, name, generate_password_hash(password)))
+                    recovery = secrets.token_urlsafe(32)
+                    conn.execute("INSERT INTO users(id,name,password,recovery_hash) VALUES (?,?,?,?)", (uid, name, generate_password_hash(password), hashlib.sha256(recovery.encode()).hexdigest()))
+                    version = 0
                 elif request.form.get("action") == "login" and row and check_password_hash(row["password"], password):
                     uid = row["id"]
+                    version = row["auth_version"]
                 else:
                     flash("登録またはログインできませんでした。入力内容を確認してください")
                     return render_template("account.html"), 400
             session.clear()
             session["uid"] = uid
+            session["auth_version"] = version
+            if recovery:
+                return render_template("recovery_saved.html", recovery=recovery)
             return redirect(url_for("workbench"))
         return render_template("account.html")
+
+    @app.route("/recover", methods=["GET", "POST"])
+    def recover():
+        if request.method == "POST":
+            throttle()
+            name = request.form.get("name", "")
+            code = request.form.get("recovery", "")
+            password = request.form.get("password", "")
+            if not 12 <= len(password) <= 128 or len(code) != 43:
+                flash("復旧できませんでした。ユーザー名・復旧コード・新しいパスワードを確認してください")
+                return render_template("recover.html"), 400
+            with db() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                row = conn.execute("SELECT * FROM users WHERE name=?", (name,)).fetchone()
+                digest = hashlib.sha256(code.encode()).hexdigest()
+                if not row or not row["recovery_hash"] or not secrets.compare_digest(digest, row["recovery_hash"]):
+                    flash("復旧できませんでした。ユーザー名・復旧コード・新しいパスワードを確認してください")
+                    return render_template("recover.html"), 400
+                replacement = secrets.token_urlsafe(32)
+                conn.execute("UPDATE users SET password=?,recovery_hash=?,auth_version=auth_version+1 WHERE id=?", (generate_password_hash(password), hashlib.sha256(replacement.encode()).hexdigest(), row["id"]))
+            session.clear()
+            session.update(uid=row["id"], auth_version=row["auth_version"]+1)
+            return render_template("recovery_saved.html", recovery=replacement)
+        return render_template("recover.html")
 
     @app.post("/logout")
     def logout():
@@ -175,6 +218,43 @@ def create_app(config=None):
                 (secrets.token_hex(16), uid, json.dumps(item, ensure_ascii=False), now()) for item in items])
         flash(f"{len(items)}商品を登録しました")
         return redirect(url_for("workbench"))
+
+    @app.post("/single")
+    def single():
+        uid = paid_user()
+        try:
+            item = prepare(request.form)
+        except ValueError as exc:
+            flash(str(exc))
+            return redirect(url_for("workbench"))
+        with db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute("SELECT COUNT(*) FROM items WHERE owner=?", (uid,)).fetchone()[0] >= 500:
+                abort(400, description="保存上限は500商品です")
+            conn.execute("INSERT INTO items(id,owner,payload,created) VALUES (?,?,?,?)", (secrets.token_hex(16),uid,json.dumps(item,ensure_ascii=False),now()))
+        flash("商品を登録しました")
+        return redirect(url_for("workbench"))
+
+    @app.route("/items/<item_id>/edit", methods=["GET", "POST"])
+    def edit_item(item_id):
+        uid = paid_user()
+        with db() as conn:
+            row = conn.execute("SELECT * FROM items WHERE id=? AND owner=?", (item_id, uid)).fetchone()
+        if not row:
+            abort(404)
+        if request.method == "POST":
+            try:
+                item = prepare(request.form)
+            except ValueError as exc:
+                flash(str(exc))
+                return render_template("edit.html", item_id=item_id, fields=request.form), 400
+            with db() as conn:
+                conn.execute("UPDATE items SET payload=? WHERE id=? AND owner=?", (json.dumps(item,ensure_ascii=False), item_id, uid))
+            flash("商品情報を更新しました")
+            return redirect(url_for("workbench"))
+        item = json.loads(row["payload"])
+        mapping = {"商品名":"name", "状態":"condition", "売値":"price", "送料":"shipping", "梱包費":"packing", "仕入れ値":"cost", "希望手残り":"target", "補足":"notes"}
+        return render_template("edit.html", item_id=item_id, fields={label:item[key] if item[key] is not None else "" for label,key in mapping.items()})
 
     @app.post("/items/<item_id>")
     def update_item(item_id):
