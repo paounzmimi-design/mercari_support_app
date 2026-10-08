@@ -244,24 +244,24 @@ def test_recovery_rotates_code_and_invalidates_old_sessions(app):
     with stale.session_transaction() as saved:
         saved.update(old_session)
     recovery=app.test_client()
-    response=recovery.post("/recover",data={"csrf":token(recovery),"name":"tester","recovery":code,"password":"new-long-password"})
+    response=recovery.post("/recover",data={"csrf":token(recovery),"name":"tester","recovery":code,"password":"new-long-password","password_confirm":"new-long-password"})
     assert response.status_code==200
     new_code=re.search(r'id="recovery-code" value="([^"]+)"',response.get_data(as_text=True)).group(1)
     assert new_code != code
     assert stale.get("/workbench").status_code==401
     assert recovery.get("/workbench").status_code==200
-    assert recovery.post("/recover",data={"csrf":token(recovery),"name":"tester","recovery":code,"password":"another-long-password"}).status_code==400
+    assert recovery.post("/recover",data={"csrf":token(recovery),"name":"tester","recovery":code,"password":"another-long-password","password_confirm":"another-long-password"}).status_code==400
     other=app.test_client()
     assert other.post("/account",data={"csrf":token(other),"name":"tester","password":"long-test-password","action":"login"}).status_code==400
-    assert other.post("/account",data={"csrf":token(other),"name":"tester","password":"new-long-password","action":"login"}).status_code==302
+    assert other.post("/account",data={"csrf":token(other),"name":"tester","password":"new-long-password","password_confirm":"new-long-password","action":"login"}).status_code==302
 
 
 def test_invalid_recovery_never_changes_account(app):
     client=app.test_client(); register(client)
     original=sql(app,"SELECT password,recovery_hash,auth_version FROM users")
-    assert client.post("/recover",data={"csrf":token(client),"name":"tester","recovery":"a"*43,"password":"new-long-password"}).status_code==400
+    assert client.post("/recover",data={"csrf":token(client),"name":"tester","recovery":"a"*43,"password":"new-long-password","password_confirm":"new-long-password"}).status_code==400
     assert sql(app,"SELECT password,recovery_hash,auth_version FROM users")==original
-    assert client.post("/recover",data={"name":"tester","recovery":"a"*43,"password":"new-long-password"}).status_code==400
+    assert client.post("/recover",data={"name":"tester","recovery":"a"*43,"password":"new-long-password","password_confirm":"new-long-password"}).status_code==400
 
 
 def test_edit_is_owner_scoped_and_expiry_blocks_new_mutations(app):
@@ -367,3 +367,18 @@ def test_stale_checkout_does_not_allow_new_purchase(app,monkeypatch):
     sql(app,"UPDATE orders SET closed=1")
     assert client.post("/checkout",data={"csrf":token(client)}).status_code==303
     assert len(calls)==2
+
+
+def test_recovery_confirmation_and_static_script(app):
+    client = app.test_client()
+    register(client)
+    original = sql(app, "SELECT password,recovery_hash,auth_version FROM users")
+    response = client.post("/recover", data={"csrf":token(client), "name":"tester", "recovery":"a"*43, "password":"new-long-password", "password_confirm":"different-password"})
+    assert response.status_code == 400
+    assert "一致しません" in response.get_data(as_text=True)
+    assert sql(app, "SELECT password,recovery_hash,auth_version FROM users") == original
+    assert b'new-long-password' not in response.data
+    script = client.get("/static/copy.js")
+    assert script.status_code == 200
+    assert b'execCommand' in script.data
+    assert b'data-save' in script.data
