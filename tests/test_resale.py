@@ -190,7 +190,7 @@ def test_checkout_creates_trusted_order_and_return_does_not_grant(app,monkeypatc
     app.config.update(STRIPE_KEY="sk_test_fixture",PUBLIC_URL="https://example.test")
     client=app.test_client(); register(client)
     assert client.post("/checkout",data={"csrf":token(client)}).status_code == 303
-    assert captured["payment_method_types"] == ["card"]
+    assert "payment_method_types" not in captured
     assert captured["line_items"][0]["price_data"]["unit_amount"] == 980
     assert sql(app,"SELECT checkout,expires FROM orders")[0] == ("cs_test_new",None)
     assert client.get("/workbench?session_id=cs_test_new").status_code == 200
