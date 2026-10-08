@@ -1,5 +1,6 @@
 import io
 import json
+from urllib.error import HTTPError
 
 import pytest
 
@@ -28,10 +29,18 @@ def test_ai_request_only_selected_facts_and_response_validation():
         assert "cost" not in req.data.decode()
         return answer("古本", "古本。角に傷。小さな汚れ。")
     assert generate_listing(item, "key-fixture", "gemini-test", fake)[0] == "古本"
-    with pytest.raises(DraftError):
+    with pytest.raises(DraftError, match="商品名・状態"):
         generate_listing(item, "key-fixture", "gemini-test", lambda *_ , **__: answer("古本", "新品同様"))
     with pytest.raises(DraftError):
         generate_listing(item, "key-fixture", "bad/model", fake)
+    with pytest.raises(DraftError, match="途中で終わりました"):
+        generate_listing(item, "key-fixture", "gemini-test",
+                         lambda *_, **__: answer("古本", "古本。角に傷。", "MAX_TOKENS"))
+    def forbidden(*_, **__):
+        raise HTTPError("https://example.invalid", 403, "secret response", {}, None)
+    with pytest.raises(DraftError, match="HTTP 403") as exc:
+        generate_listing(item, "key-fixture", "gemini-test", forbidden)
+    assert "secret response" not in str(exc.value)
 
 
 def test_ai_opt_in_limits_and_edit_invalidates(tmp_path, monkeypatch):
