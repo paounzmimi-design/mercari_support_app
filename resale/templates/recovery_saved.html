@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% block content %}<section><h2>最後に、復旧コードを保存</h2>
+<p>パスワードを忘れたときに必要なコードです。この画面を閉じる前に保存してください。再設定後は以前のコードを使えません。</p>
+<p class="notice">パスワードと同じように大切に保管してください。他人やチャットに送らないでください。</p>
+<label>復旧コード<input id="recovery-code" value="{{ recovery }}" readonly autocomplete="off" size="43"></label>
+<p><button type="button" data-save="recovery-code">ファイルに保存</button><span role="status" aria-live="polite"></span></p>
+<p>ダウンロード先の <strong>recovery-code.txt</strong> を確認し、ユーザー名も別途メモしてください。共有端末では自分だけが見られる場所に移してください。</p>
+<p><button type="button" data-copy="recovery-code">コードをコピー</button><span role="status" aria-live="polite"></span></p>
+<p>コピーできない場合は、コード欄を選択して Ctrl+C。スマホではコードを長押ししてコピーできます。</p>
+<p><a class="button" href="/workbench">保存を確認したので商品一覧へ</a></p></section>{% endblock %}

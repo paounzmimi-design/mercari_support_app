@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section><h2>商品情報を編集</h2><form method="post"><input type="hidden" name="csrf" value="{{ csrf }}">{% include 'product_fields.html' %}<button>更新して再計算</button> <a href="/workbench">戻る</a></form><p>出品状況と売却額は保持します。送料・梱包費の変更は売却後の手残りにも反映します。</p></section>{% endblock %}

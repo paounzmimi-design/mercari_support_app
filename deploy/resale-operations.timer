@@ -1,0 +1,10 @@
+[Unit]
+Description=Check resale prototype every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+Unit=resale-operations.service
+
+[Install]
+WantedBy=timers.target

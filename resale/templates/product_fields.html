@@ -1,0 +1,4 @@
+<div class="row">
+{% for label in ['商品名','状態','売値','送料','梱包費','仕入れ値','希望手残り'] %}
+<label>{{ label }}{% if label=='仕入れ値' %}（任意）{% endif %}<input name="{{ label }}" value="{{ fields.get(label, '0' if label in ['送料','梱包費','希望手残り'] else '') }}" {% if label in ['商品名','状態'] %}maxlength="120"{% else %}type="number" min="{{ 300 if label=='売値' else 0 }}" max="9999999"{% endif %} {% if label!='仕入れ値' %}required{% endif %}></label>
+{% endfor %}</div><label>補足（傷・付属品など）<textarea name="補足" maxlength="1000" rows="3">{{ fields.get('補足','') }}</textarea></label><p>希望手残りは、仕入れ値がある場合はその費用も引いた後の希望額です。</p>
