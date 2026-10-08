@@ -1,1 +1,16 @@
-{% extends 'base.html' %}{% block content %}<section><h2>パスワードを再設定</h2><p>登録時に保管した復旧コードで再設定できます。成功すると以前のログイン状態は無効になり、復旧コードも新しくなります。</p><form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><label>ユーザー名<input name="name" required autocomplete="username" maxlength="40"></label><label>復旧コード<input name="recovery" required minlength="43" maxlength="43" autocomplete="off"></label><label>新しいパスワード<input name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></label><button>再設定する</button></form><p>復旧コードも失った場合の本人確認・復旧手順は、販売前に別途整備が必要です。</p></section>{% endblock %}
+{% extends 'base.html' %}{% block content %}
+<section><h2>パスワードを忘れたとき</h2>
+<p>次の3項目を入力してください。現在のパスワードは不要です。</p>
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label>① 登録したユーザー名<input name="name" value="{{ request.form.get('name', '') }}" required autocomplete="username" maxlength="40" autocapitalize="none" spellcheck="false"></label>
+<label>② 保管した復旧コード<input name="recovery" required minlength="43" maxlength="43" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="code-help"></label>
+<p id="code-help">登録・再設定のあとに表示された43文字です。パソコンは Ctrl+V、スマホは入力欄を長押し→貼り付け。再設定済みの場合は最新のコードを使います。</p>
+<label>③ 新しいパスワード（12〜128文字）<input id="new-password" name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></label>
+<button type="button" data-toggle="new-password">表示する</button>
+<label>同じ新しいパスワードをもう一度<input id="confirm-password" name="password_confirm" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></label>
+<button type="button" data-toggle="confirm-password">表示する</button>
+<p>再設定すると、他の端末のログインは解除されます。次の画面で新しい復旧コードを保存してください。</p>
+<button>パスワードを再設定する</button></form>
+<p><a href="/account">ログイン画面へ戻る</a></p>
+<details><summary>復旧コードが見つからない場合</summary><p>ダウンロード先の recovery-code.txt や、登録時に保管したメモを確認してください。コードがない場合、この試作版では自動復旧できません。新規登録では以前の商品データを引き継げません。</p></details>
+</section>{% endblock %}
