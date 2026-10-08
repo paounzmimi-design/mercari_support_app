@@ -1,0 +1,46 @@
+"""Optional listing copy assistance. Outputs require human fact checking."""
+import json
+import re
+from urllib.request import Request, urlopen
+
+
+class DraftError(Exception):
+    pass
+
+
+def generate_listing(item, api_key, model, opener=urlopen):
+    if not api_key or not re.fullmatch(r"[A-Za-z0-9._-]{3,100}", model):
+        raise DraftError("AIの設定を確認してください")
+    facts = {key: item[key] for key in ("name", "condition", "notes")}
+    prompt = (
+        "日本語の商品出品文を作る。次のJSONに明記された事実だけを短く整える。"
+        "ブランド・動作・付属品・発送・保証・真贋・購入時期など未入力の事実を補わない。"
+        "勧誘、断定的な品質評価、ハッシュタグ、URLを含めない。"
+        "JSONオブジェクトのtitle（40文字以内）とdescription（700文字以内）だけ返す。\n"
+        + json.dumps(facts, ensure_ascii=False)
+    )
+    body = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
+                       "generationConfig": {"responseMimeType": "application/json",
+                                            "temperature": 0.2, "maxOutputTokens": 500}},
+                      ensure_ascii=False).encode()
+    req = Request("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent",
+                  data=body, headers={"Content-Type": "application/json", "x-goog-api-key": api_key})
+    try:
+        with opener(req, timeout=12) as response:
+            data = json.load(response)
+        candidate = data["candidates"][0]
+        if candidate.get("finishReason") != "STOP":
+            raise DraftError("AIの文章を確認できませんでした")
+        result = json.loads(candidate["content"]["parts"][0]["text"])
+        title, description = result["title"], result["description"]
+        if (not isinstance(title, str) or not 1 <= len(title.strip()) <= 40
+                or not isinstance(description, str) or not 1 <= len(description.strip()) <= 700
+                or "http" in (title + description).lower()
+                or item["name"] not in description or item["condition"] not in description):
+            raise DraftError("AIの文章を確認できませんでした")
+        return title.strip(), description.strip()
+    except DraftError:
+        raise
+    except Exception as exc:
+        # API errors may contain credentials and prompt data. Never show them.
+        raise DraftError("AIの文章を作れませんでした。時間を置いて再試行してください") from exc
