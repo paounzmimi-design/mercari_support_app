@@ -62,6 +62,10 @@ def test_ai_opt_in_limits_and_edit_invalidates(tmp_path, monkeypatch):
     assert client.post(f"/items/{item}/ai-draft", data={"csrf": token(client)}).status_code == 302
     assert client.post(f"/items/{item}/ai-draft", data={"csrf": token(client)}).status_code == 429
     assert calls == ["本", "本"]
+    # 1,000,000 is 22:46 JST; two hours later is the next local day.
+    app.config["NOW"] = lambda: 1_000_000 + 7200
+    assert client.post(f"/items/{item}/ai-draft", data={"csrf": token(client)}).status_code == 302
+    assert calls == ["本", "本", "本"]
     edit = {"csrf": token(client), "商品名": "変更した本", "状態": "傷あり", "補足": "角に傷",
         "売値": "1200", "送料": "230", "梱包費": "30", "仕入れ値": "", "希望手残り": "500"}
     assert client.post(f"/items/{item}/edit", data=edit).status_code == 302
