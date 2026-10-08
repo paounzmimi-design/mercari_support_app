@@ -23,7 +23,7 @@ def inspect(database, health_url, now=None, opener=urlopen):
         with sqlite3.connect(uri, uri=True, timeout=5) as conn:
             if conn.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                 problems.append("database_check_failed")
-            pending = conn.execute("SELECT COUNT(*) FROM orders WHERE expires IS NULL AND created<?", (checked-7200,)).fetchone()[0]
+            pending = conn.execute("SELECT COUNT(*) FROM orders WHERE expires IS NULL AND closed=0 AND (created IS NULL OR created<?)", (checked-7200,)).fetchone()[0]
             held = conn.execute("SELECT COUNT(*) FROM orders WHERE revoked=1").fetchone()[0]
     except sqlite3.Error:
         problems.append("database_unavailable")
