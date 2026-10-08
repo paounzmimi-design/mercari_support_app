@@ -235,6 +235,24 @@ def test_single_and_edit_recalculate_without_losing_sale(app):
     assert client.get("/export").json[0]["net"] == 720
 
 
+def test_zero_target_does_not_show_misleading_minimum(app):
+    client = app.test_client()
+    uid = register(client)
+    order(app, uid)
+    assert event(client, app).status_code == 200
+    fields = {"商品名": "テスト商品", "状態": "良好", "売値": "3000",
+              "送料": "0", "梱包費": "0", "仕入れ値": "",
+              "希望手残り": "0", "補足": ""}
+    assert client.post("/single", data=dict(fields, csrf=token(client))).status_code == 302
+    html = client.get("/workbench").get_data(as_text=True)
+    assert "手残り 2700円" in html
+    assert "希望額を守る最低売値" not in html
+    item_id = sql(app, "SELECT id FROM items")[0][0]
+    fields["希望手残り"] = "2000"
+    assert client.post(f"/items/{item_id}/edit", data=dict(fields, csrf=token(client))).status_code == 302
+    assert "希望額を守る最低売値" in client.get("/workbench").get_data(as_text=True)
+
+
 def test_recovery_rotates_code_and_invalidates_old_sessions(app):
     import re
     client=app.test_client()
