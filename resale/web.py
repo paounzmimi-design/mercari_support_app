@@ -335,7 +335,7 @@ def create_app(config=None):
         try:
             result = stripe.checkout.Session.create(
                 api_key=app.config["STRIPE_KEY"], idempotency_key=order,
-                mode="payment", payment_method_types=["card"],
+                mode="payment",
                 expires_at=created+3600,
                 client_reference_id=order, metadata={"order": order},
                 line_items=[{"price_data": {"currency": "jpy", "unit_amount": amount,
