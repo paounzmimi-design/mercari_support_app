@@ -27,7 +27,7 @@ def token(client):
 def register(client, name="tester"):
     response = client.post("/account", data={"csrf": token(client), "name": name,
         "password": "long-test-password", "action": "register"})
-    assert response.status_code == 302
+    assert response.status_code == 200
     with client.session_transaction() as session:
         return session["uid"]
 
@@ -214,3 +214,74 @@ def test_login_throttle(app):
     for index in range(10):
         assert client.post("/account",data={"csrf":csrf,"action":"login","name":"tester","password":"wrong-password"}).status_code == 400
     assert client.post("/account",data={"csrf":csrf,"action":"login","name":"tester","password":"wrong-password"}).status_code == 429
+
+
+def test_single_and_edit_recalculate_without_losing_sale(app):
+    client=app.test_client(); uid=register(client); order(app,uid); event(client,app)
+    fields={"商品名":"本","状態":"傷あり","売値":"1200","送料":"230","梱包費":"30","仕入れ値":"","希望手残り":"500","補足":"角に傷"}
+    assert client.post("/single",data=dict(fields,csrf=token(client))).status_code == 302
+    item=sql(app,"SELECT id FROM items")[0][0]
+    client.post(f"/items/{item}",data={"csrf":token(client),"status":"売却済み","sold_price":"1000"})
+    assert client.get(f"/items/{item}/edit").status_code == 200
+    assert client.post(f"/items/{item}/edit",data=dict(fields,csrf=token(client),送料="330")).status_code == 302
+    record=client.get("/export").json[0]
+    assert record["net"] == 720 and record["status"] == "売却済み" and record["sold_price"] == 1000
+    assert "540円" in client.get("/workbench").get_data(as_text=True)
+    assert client.post(f"/items/{item}/edit",data=dict(fields,csrf=token(client),売値="1")).status_code == 400
+    assert client.get("/export").json[0]["net"] == 720
+
+
+def test_recovery_rotates_code_and_invalidates_old_sessions(app):
+    import re
+    client=app.test_client()
+    response=client.post("/account",data={"csrf":token(client),"name":"tester","password":"long-test-password","action":"register"})
+    code=re.search(r'id="recovery-code" value="([^"]+)"',response.get_data(as_text=True)).group(1)
+    assert len(code)==43
+    assert code not in str(sql(app,"SELECT * FROM users"))
+    with client.session_transaction() as saved:
+        old_session=dict(saved)
+    stale=app.test_client()
+    with stale.session_transaction() as saved:
+        saved.update(old_session)
+    recovery=app.test_client()
+    response=recovery.post("/recover",data={"csrf":token(recovery),"name":"tester","recovery":code,"password":"new-long-password"})
+    assert response.status_code==200
+    new_code=re.search(r'id="recovery-code" value="([^"]+)"',response.get_data(as_text=True)).group(1)
+    assert new_code != code
+    assert stale.get("/workbench").status_code==401
+    assert recovery.get("/workbench").status_code==200
+    assert recovery.post("/recover",data={"csrf":token(recovery),"name":"tester","recovery":code,"password":"another-long-password"}).status_code==400
+    other=app.test_client()
+    assert other.post("/account",data={"csrf":token(other),"name":"tester","password":"long-test-password","action":"login"}).status_code==400
+    assert other.post("/account",data={"csrf":token(other),"name":"tester","password":"new-long-password","action":"login"}).status_code==302
+
+
+def test_invalid_recovery_never_changes_account(app):
+    client=app.test_client(); register(client)
+    original=sql(app,"SELECT password,recovery_hash,auth_version FROM users")
+    assert client.post("/recover",data={"csrf":token(client),"name":"tester","recovery":"a"*43,"password":"new-long-password"}).status_code==400
+    assert sql(app,"SELECT password,recovery_hash,auth_version FROM users")==original
+    assert client.post("/recover",data={"name":"tester","recovery":"a"*43,"password":"new-long-password"}).status_code==400
+
+
+def test_edit_is_owner_scoped_and_expiry_blocks_new_mutations(app):
+    first=app.test_client(); uid=register(first); order(app,uid); event(first,app)
+    first.post("/batch",data={"csrf":token(first),"csv":CSV})
+    item=sql(app,"SELECT id FROM items")[0][0]
+    second=app.test_client(); other=register(second,"other")
+    sql(app,"INSERT INTO orders(id,owner,expires,amount) VALUES ('other',?,?,980)",(other,1_000_000+PERIOD))
+    assert second.get(f"/items/{item}/edit").status_code==404
+    assert second.post(f"/items/{item}/edit",data={"csrf":token(second)}).status_code==404
+    app.config["NOW"]=lambda:1_000_000+PERIOD
+    assert first.get(f"/items/{item}/edit").status_code==403
+    assert first.post("/single",data={"csrf":token(first)}).status_code==403
+
+
+def test_legacy_prototype_database_migrates_without_reset(tmp_path):
+    db=tmp_path/"legacy.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE users(id TEXT PRIMARY KEY, name TEXT UNIQUE, password TEXT)")
+        conn.execute("INSERT INTO users VALUES ('u','name','hash')")
+    config={"SECRET_KEY":"x"*40,"DATABASE":str(db)}
+    create_app(config); app=create_app(config)
+    assert sql(app,"SELECT id,name,password,auth_version FROM users")==[("u","name","hash",0)]
