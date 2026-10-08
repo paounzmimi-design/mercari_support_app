@@ -285,3 +285,66 @@ def test_legacy_prototype_database_migrates_without_reset(tmp_path):
     config={"SECRET_KEY":"x"*40,"DATABASE":str(db)}
     create_app(config); app=create_app(config)
     assert sql(app,"SELECT id,name,password,auth_version FROM users")==[("u","name","hash",0)]
+
+
+def test_repeated_checkout_reuses_session(app,monkeypatch):
+    import stripe
+    from types import SimpleNamespace
+    calls=[]
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(id="cs_same",url="https://checkout.stripe.com/same",livemode=False)
+    monkeypatch.setattr(stripe.checkout.Session,"create",create)
+    app.config.update(STRIPE_KEY="sk_test_fixture",PUBLIC_URL="https://example.test")
+    client=app.test_client(); register(client)
+    for unused in range(3):
+        response=client.post("/checkout",data={"csrf":token(client)})
+        assert response.status_code==303 and response.location=="https://checkout.stripe.com/same"
+    assert len(calls)==1 and sql(app,"SELECT COUNT(*) FROM orders")[0][0]==1
+
+
+def test_failed_checkout_retry_reuses_idempotency_key(app,monkeypatch):
+    import stripe
+    from types import SimpleNamespace
+    calls=[]
+    def create(**kwargs):
+        calls.append(kwargs)
+        if len(calls)==1:
+            raise stripe.APIConnectionError("lost response")
+        return SimpleNamespace(id="cs_retry",url="https://checkout.stripe.com/retry",livemode=False)
+    monkeypatch.setattr(stripe.checkout.Session,"create",create)
+    app.config.update(STRIPE_KEY="sk_test_fixture",PUBLIC_URL="https://example.test")
+    client=app.test_client(); register(client)
+    assert client.post("/checkout",data={"csrf":token(client)}).status_code==503
+    assert client.post("/checkout",data={"csrf":token(client)}).status_code==303
+    assert calls[0]==calls[1]
+    assert sql(app,"SELECT COUNT(*) FROM orders")[0][0]==1
+
+
+def test_monitor_read_only_and_no_private_details(app,tmp_path):
+    import io
+    from resale.monitor import inspect
+    class Response(io.BytesIO):
+        status=200
+    def healthy(*args,**kwargs):
+        return Response(b'{"ok":true}')
+    client=app.test_client(); uid=register(client)
+    sql(app,"INSERT INTO orders(id,owner,amount,created) VALUES ('private-order',?,980,1)",(uid,))
+    before=sql(app,"SELECT * FROM orders")
+    result=inspect(app.config["DATABASE"],"http://localhost/healthz",now=1_000_000,opener=healthy)
+    assert result["problems"]==["old_pending_orders"]
+    assert "private-order" not in json.dumps(result) and uid not in json.dumps(result)
+    assert sql(app,"SELECT * FROM orders")==before
+    missing=tmp_path/"missing.db"
+    result=inspect(missing,"http://localhost/healthz",opener=healthy)
+    assert "database_unavailable" in result["problems"] and not missing.exists()
+
+
+def test_health_and_monitor_failure(app):
+    from resale.monitor import inspect
+    assert app.test_client().get("/healthz").json=={"ok":True}
+    def fail(*args,**kwargs):
+        raise OSError("secret should not be logged")
+    result=inspect(app.config["DATABASE"],"http://localhost/healthz",opener=fail)
+    assert result["problems"]==["app_unreachable"]
+    assert "secret" not in json.dumps(result)
