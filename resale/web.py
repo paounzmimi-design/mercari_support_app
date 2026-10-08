@@ -176,8 +176,11 @@ def create_app(config=None):
         if request.method == "POST":
             throttle()
             name = request.form.get("name", "")
-            code = request.form.get("recovery", "")
+            code = request.form.get("recovery", "").strip()
             password = request.form.get("password", "")
+            if password != request.form.get("password_confirm", ""):
+                flash("新しいパスワードが一致しません。2つの欄に同じパスワードを入力してください")
+                return render_template("recover.html"), 400
             if not 12 <= len(password) <= 128 or len(code) != 43:
                 flash("復旧できませんでした。ユーザー名・復旧コード・新しいパスワードを確認してください")
                 return render_template("recover.html"), 400
