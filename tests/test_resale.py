@@ -348,3 +348,22 @@ def test_health_and_monitor_failure(app):
     result=inspect(app.config["DATABASE"],"http://localhost/healthz",opener=fail)
     assert result["problems"]==["app_unreachable"]
     assert "secret" not in json.dumps(result)
+
+
+def test_stale_checkout_does_not_allow_new_purchase(app,monkeypatch):
+    import stripe
+    from types import SimpleNamespace
+    calls=[]
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(id="cs_old_"+str(len(calls)),url="https://checkout.stripe.com/old",livemode=False)
+    monkeypatch.setattr(stripe.checkout.Session,"create",create)
+    app.config.update(STRIPE_KEY="sk_test_fixture",PUBLIC_URL="https://example.test")
+    client=app.test_client(); register(client)
+    assert client.post("/checkout",data={"csrf":token(client)}).status_code==303
+    app.config["NOW"]=lambda:1_010_000
+    assert client.post("/checkout",data={"csrf":token(client)}).status_code==409
+    assert len(calls)==1
+    sql(app,"UPDATE orders SET closed=1")
+    assert client.post("/checkout",data={"csrf":token(client)}).status_code==303
+    assert len(calls)==2
